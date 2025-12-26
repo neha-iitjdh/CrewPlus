@@ -19,6 +19,15 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
+// Health check endpoint for Render
+app.get('/api/health', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Server is healthy',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // API Routes
 app.use('/api', routes);
 

@@ -1,0 +1,62 @@
+# Render Blueprint - CrewPlus Pizza Ordering Portal
+# https://render.com/docs/blueprint-spec
+
+services:
+  # Backend API Service
+  - type: web
+    name: crewplus-api
+    runtime: node
+    region: oregon
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: MONGODB_URI
+        sync: false  # Set manually in Render dashboard
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRE
+        value: 7d
+      - key: CLIENT_URL
+        fromService:
+          type: web
+          name: crewplus-client
+          property: host
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+
+  # Frontend Static Site
+  - type: web
+    name: crewplus-client
+    runtime: static
+    region: oregon
+    rootDir: client
+    buildCommand: npm install && npm run build
+    staticPublishPath: build
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: REACT_APP_API_URL
+        fromService:
+          type: web
+          name: crewplus-api
+          property: hostport
