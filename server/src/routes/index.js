@@ -7,6 +7,8 @@ const cartRoutes = require('./cartRoutes');
 const orderRoutes = require('./orderRoutes');
 const couponRoutes = require('./couponRoutes');
 const customizationRoutes = require('./customizationRoutes');
+const groupOrderRoutes = require('./groupOrderRoutes');
+const recommendationRoutes = require('./recommendationRoutes');
 
 // Health check
 router.get('/health', (req, res) => {
@@ -24,5 +26,7 @@ router.use('/cart', cartRoutes);
 router.use('/orders', orderRoutes);
 router.use('/coupons', couponRoutes);
 router.use('/customizations', customizationRoutes);
+router.use('/group-orders', groupOrderRoutes);
+router.use('/recommendations', recommendationRoutes);
 
 module.exports = router;
