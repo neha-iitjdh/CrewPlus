@@ -5,6 +5,7 @@ import { Toaster } from 'react-hot-toast';
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
+import { GroupOrderProvider } from './context/GroupOrderContext';
 import './index.css';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
@@ -13,8 +14,9 @@ root.render(
     <BrowserRouter>
       <AuthProvider>
         <CartProvider>
-          <App />
-          <Toaster
+          <GroupOrderProvider>
+            <App />
+            <Toaster
             position="bottom-right"
             toastOptions={{
               duration: 3000,
@@ -34,6 +36,7 @@ root.render(
               },
             }}
           />
+          </GroupOrderProvider>
         </CartProvider>
       </AuthProvider>
     </BrowserRouter>

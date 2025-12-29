@@ -9,6 +9,8 @@ import Menu from './pages/Menu';
 import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
 import TrackOrder from './pages/TrackOrder';
+import CreateGroupOrder from './pages/CreateGroupOrder';
+import GroupOrder from './pages/GroupOrder';
 
 // Auth Pages
 import Login from './pages/auth/Login';
@@ -42,6 +44,8 @@ function App() {
           <Route path="/cart" element={<Cart />} />
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/track" element={<TrackOrder />} />
+          <Route path="/group-order/create" element={<CreateGroupOrder />} />
+          <Route path="/group-order/:code" element={<GroupOrder />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 

@@ -134,4 +134,35 @@ export const customizationsAPI = {
   toggleCustomization: (id) => api.put(`/customizations/${id}/toggle`),
 };
 
+// Recommendations API
+export const recommendationsAPI = {
+  getRecommendations: (limit = 6) => api.get('/recommendations', { params: { limit } }),
+  getPopular: (limit = 6) => api.get('/recommendations/popular', { params: { limit } }),
+  getTrending: (limit = 6) => api.get('/recommendations/trending', { params: { limit } }),
+  getSimilar: (productIds, limit = 4) => api.post('/recommendations/similar', { productIds }, { params: { limit } }),
+  getPreferences: () => api.get('/recommendations/preferences'),
+  updateDietaryPreferences: (data) => api.put('/recommendations/preferences/dietary', data),
+  getReorderSuggestions: () => api.get('/recommendations/reorder'),
+};
+
+// Group Orders API
+export const groupOrdersAPI = {
+  create: (data) => api.post('/group-orders', data),
+  getMyGroupOrders: () => api.get('/group-orders'),
+  getGroupOrder: (code) => api.get(`/group-orders/${code}`),
+  join: (code, data) => api.post(`/group-orders/${code}/join`, data),
+  leave: (code, data) => api.post(`/group-orders/${code}/leave`, data),
+  addItem: (code, data) => api.post(`/group-orders/${code}/items`, data),
+  updateItem: (code, itemId, data) => api.put(`/group-orders/${code}/items/${itemId}`, data),
+  removeItem: (code, itemId, data) => api.delete(`/group-orders/${code}/items/${itemId}`, { data }),
+  toggleReady: (code, data) => api.put(`/group-orders/${code}/ready`, data),
+  lock: (code) => api.put(`/group-orders/${code}/lock`),
+  unlock: (code) => api.put(`/group-orders/${code}/unlock`),
+  setSplitType: (code, splitType) => api.put(`/group-orders/${code}/split`, { splitType }),
+  getSplit: (code) => api.get(`/group-orders/${code}/split`),
+  checkout: (code, data) => api.post(`/group-orders/${code}/checkout`, data),
+  cancel: (code) => api.delete(`/group-orders/${code}`),
+};
+
+export { getSessionId };
 export default api;

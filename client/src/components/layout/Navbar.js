@@ -45,6 +45,13 @@ const Navbar = () => {
           >
             Menu
           </Link>
+          <Link
+            to="/group-order/create"
+            className={`nav-link ${location.pathname.startsWith('/group-order') ? 'active' : ''}`}
+            onClick={() => setIsOpen(false)}
+          >
+            Group Order
+          </Link>
           {isAuthenticated && !isAdmin() && (
             <Link
               to="/orders"
