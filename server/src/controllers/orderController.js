@@ -7,6 +7,7 @@ const ApiResponse = require('../utils/ApiResponse');
 const asyncHandler = require('../utils/asyncHandler');
 const { ORDER_STATUS } = require('../config/constants');
 const { sendOrderConfirmationEmail, sendOrderStatusUpdateEmail } = require('../services/emailService');
+const recommendationService = require('../services/recommendationService');
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -134,6 +135,13 @@ const createOrder = asyncHandler(async (req, res) => {
   sendOrderConfirmationEmail(populatedOrder).catch(err => {
     console.error('Failed to send order confirmation email:', err);
   });
+
+  // Update user preferences for recommendations (async, don't wait)
+  if (userId) {
+    recommendationService.updatePreferencesFromOrder(userId, populatedOrder).catch(err => {
+      console.error('Failed to update user preferences:', err);
+    });
+  }
 
   ApiResponse.created({
     order: populatedOrder
