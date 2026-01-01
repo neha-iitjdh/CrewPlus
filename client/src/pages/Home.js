@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { productsAPI } from '../services/api';
 import ProductCard from '../components/menu/ProductCard';
 import Loading from '../components/common/Loading';
+import Recommendations from '../components/Recommendations';
 import { FiTruck, FiClock, FiAward, FiPhoneCall } from 'react-icons/fi';
 import { GiFullPizza, GiHotMeal, GiSodaCan } from 'react-icons/gi';
 import './Home.css';
@@ -118,6 +119,13 @@ const Home = () => {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* AI Recommendations Section */}
+      <section className="recommendations section">
+        <div className="container">
+          <Recommendations type="personalized" />
         </div>
       </section>
 
