@@ -1,25 +1,20 @@
+/**
+ * Standardized API Response
+ *
+ * Why use this?
+ * - Frontend always knows what to expect
+ * - Easy to add metadata later (pagination, etc.)
+ * - Consistent format across all endpoints
+ *
+ * Usage:
+ *   res.status(200).json(new ApiResponse(200, userData, 'User fetched'));
+ */
 class ApiResponse {
   constructor(statusCode, data, message = 'Success') {
     this.success = statusCode < 400;
     this.statusCode = statusCode;
     this.message = message;
     this.data = data;
-  }
-
-  static success(data, message = 'Success') {
-    return new ApiResponse(200, data, message);
-  }
-
-  static created(data, message = 'Created successfully') {
-    return new ApiResponse(201, data, message);
-  }
-
-  send(res) {
-    return res.status(this.statusCode).json({
-      success: this.success,
-      message: this.message,
-      data: this.data
-    });
   }
 }
 

@@ -1,54 +1,42 @@
+/**
+ * Application Constants
+ *
+ * Why constants?
+ * - Single source of truth
+ * - Easy to change values
+ * - Prevents typos (use ROLES.ADMIN instead of 'admin')
+ */
+
+const ROLES = {
+  CUSTOMER: 'CUSTOMER',
+  ADMIN: 'ADMIN'
+};
+
+const ORDER_STATUS = {
+  PENDING: 'pending',
+  CONFIRMED: 'confirmed',
+  PREPARING: 'preparing',
+  READY: 'ready',
+  DELIVERED: 'delivered',
+  CANCELLED: 'cancelled'
+};
+
+const CATEGORIES = {
+  PIZZA: 'pizza',
+  DRINK: 'drink',
+  BREAD: 'bread'
+};
+
+const SIZES = ['small', 'medium', 'large', 'extra_large'];
+
+const TAX_RATE = 0.10; // 10%
+const DELIVERY_FEE = 50; // ₹50
+
 module.exports = {
-  // User Roles
-  ROLES: {
-    GUEST: 'guest',
-    CUSTOMER: 'customer',
-    ADMIN: 'admin'
-  },
-
-  // Product Categories
-  CATEGORIES: {
-    PIZZA: 'pizza',
-    DRINK: 'drink',
-    BREAD: 'bread'
-  },
-
-  // Order Status
-  ORDER_STATUS: {
-    PENDING: 'pending',
-    CONFIRMED: 'confirmed',
-    PREPARING: 'preparing',
-    READY: 'ready',
-    DELIVERED: 'delivered',
-    CANCELLED: 'cancelled'
-  },
-
-  // Order Types
-  ORDER_TYPES: {
-    DELIVERY: 'delivery',
-    CARRYOUT: 'carryout'
-  },
-
-  // Pizza Sizes
-  SIZES: {
-    SMALL: 'small',
-    MEDIUM: 'medium',
-    LARGE: 'large',
-    EXTRA_LARGE: 'extra_large'
-  },
-
-  // Coupon Types
-  COUPON_TYPES: {
-    PERCENTAGE: 'percentage',
-    FIXED: 'fixed'
-  },
-
-  // Customization Categories
-  CUSTOMIZATION_TYPES: {
-    CRUST: 'crust',
-    SAUCE: 'sauce',
-    CHEESE: 'cheese',
-    TOPPING: 'topping',
-    EXTRA: 'extra'
-  }
+  ROLES,
+  ORDER_STATUS,
+  CATEGORIES,
+  SIZES,
+  TAX_RATE,
+  DELIVERY_FEE
 };
