@@ -1,149 +1,275 @@
+/**
+ * Cart Model
+ *
+ * Two types of carts:
+ * 1. Guest Cart - identified by sessionId (browser session)
+ * 2. User Cart - identified by user ObjectId
+ *
+ * Cart Items contain:
+ * - Product reference
+ * - Quantity
+ * - Selected size
+ * - Price at time of adding (important! prices can change)
+ * - Customizations (toppings, etc.)
+ * - Notes ("extra cheese please")
+ */
 const mongoose = require('mongoose');
+const { TAX_RATE } = require('../config/constants');
 
-const customizationItemSchema = new mongoose.Schema({
-  customization: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Customization',
-    required: true
-  },
-  name: String,
-  price: Number
-});
-
+// Schema for individual cart items
 const cartItemSchema = new mongoose.Schema({
   product: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Product',
     required: true
   },
+
   quantity: {
     type: Number,
     required: true,
     min: [1, 'Quantity must be at least 1'],
     default: 1
   },
+
   size: {
     type: String,
     enum: ['small', 'medium', 'large', 'extra_large'],
     default: 'medium'
   },
+
+  /**
+   * Price snapshot
+   * We store the price at time of adding because:
+   * - Product prices can change
+   * - Cart should show what customer expected to pay
+   */
   price: {
     type: Number,
     required: true
   },
-  customizations: [customizationItemSchema],
-  customizationTotal: {
-    type: Number,
-    default: 0
-  },
+
+  /**
+   * Customizations (we'll build this model later)
+   * For now, store as embedded objects
+   */
+  customizations: [{
+    name: String,
+    price: { type: Number, default: 0 }
+  }],
+
   notes: {
     type: String,
-    trim: true,
-    maxlength: [200, 'Notes cannot exceed 200 characters']
-  }
-});
-
-const cartSchema = new mongoose.Schema({
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  },
-  sessionId: {
-    type: String,
-    required: function() {
-      return !this.user;
-    }
-  },
-  items: [cartItemSchema],
-  subtotal: {
-    type: Number,
-    default: 0
-  },
-  tax: {
-    type: Number,
-    default: 0
-  },
-  total: {
-    type: Number,
-    default: 0
+    maxlength: 200
   }
 }, {
-  timestamps: true
+  _id: true // Each item gets its own ID for updating/removing
 });
 
-// Index for efficient querying
-cartSchema.index({ user: 1 });
-cartSchema.index({ sessionId: 1 });
+// Main cart schema
+const cartSchema = new mongoose.Schema(
+  {
+    /**
+     * Either user OR sessionId must exist
+     * - user: for logged-in users
+     * - sessionId: for guests
+     */
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
 
-// Calculate totals before saving
-cartSchema.pre('save', function(next) {
+    sessionId: {
+      type: String
+    },
+
+    items: [cartItemSchema],
+
+    // Calculated totals
+    subtotal: {
+      type: Number,
+      default: 0
+    },
+
+    tax: {
+      type: Number,
+      default: 0
+    },
+
+    total: {
+      type: Number,
+      default: 0
+    }
+  },
+  {
+    timestamps: true
+  }
+);
+
+/**
+ * Pre-save Hook: Calculate totals
+ *
+ * Runs before saving to update subtotal, tax, total
+ */
+cartSchema.pre('save', function () {
+  // Calculate subtotal from items
   this.subtotal = this.items.reduce((sum, item) => {
-    const itemTotal = (item.price + (item.customizationTotal || 0)) * item.quantity;
+    // Item total = (base price + customizations) * quantity
+    const customizationTotal = item.customizations.reduce(
+      (cSum, c) => cSum + (c.price || 0),
+      0
+    );
+    const itemTotal = (item.price + customizationTotal) * item.quantity;
     return sum + itemTotal;
   }, 0);
 
-  // Calculate tax (assuming 10%)
-  this.tax = Math.round(this.subtotal * 0.10 * 100) / 100;
-  this.total = Math.round((this.subtotal + this.tax) * 100) / 100;
+  // Calculate tax (10%)
+  this.tax = Math.round(this.subtotal * TAX_RATE * 100) / 100;
 
-  next();
+  // Calculate total
+  this.total = Math.round((this.subtotal + this.tax) * 100) / 100;
+  // Mongoose v9+ - no next() needed for sync hooks
 });
 
-// Method to add item to cart
-cartSchema.methods.addItem = async function(productId, quantity, size, price, notes, customizations = [], customizationTotal = 0) {
-  // Generate a customization key to compare items with same product but different customizations
-  const customizationKey = customizations.map(c => c.customization.toString()).sort().join(',');
+/**
+ * Method: addItem
+ * Add a product to cart or increase quantity if exists
+ */
+cartSchema.methods.addItem = async function (productData) {
+  const { productId, quantity = 1, size, price, customizations = [], notes } = productData;
 
-  const existingItem = this.items.find(item => {
-    const itemCustomizationKey = (item.customizations || []).map(c => c.customization.toString()).sort().join(',');
-    return item.product.toString() === productId.toString() &&
-           item.size === size &&
-           itemCustomizationKey === customizationKey;
-  });
+  // Check if item with same product AND size already exists
+  const existingItemIndex = this.items.findIndex(
+    item => item.product.toString() === productId.toString() &&
+            item.size === size &&
+            JSON.stringify(item.customizations) === JSON.stringify(customizations)
+  );
 
-  if (existingItem) {
-    existingItem.quantity += quantity;
+  if (existingItemIndex > -1) {
+    // Item exists - increase quantity
+    this.items[existingItemIndex].quantity += quantity;
   } else {
+    // New item - add to cart
     this.items.push({
       product: productId,
       quantity,
       size,
       price,
-      notes,
       customizations,
-      customizationTotal
+      notes
     });
   }
 
-  return this.save();
+  await this.save();
+  return this;
 };
 
-// Method to update item quantity
-cartSchema.methods.updateItemQuantity = async function(itemId, quantity) {
+/**
+ * Method: updateItemQuantity
+ */
+cartSchema.methods.updateItemQuantity = async function (itemId, quantity) {
   const item = this.items.id(itemId);
+
   if (!item) {
     throw new Error('Item not found in cart');
   }
 
   if (quantity <= 0) {
+    // Remove item if quantity is 0 or less
     this.items.pull(itemId);
   } else {
     item.quantity = quantity;
   }
 
-  return this.save();
+  await this.save();
+  return this;
 };
 
-// Method to remove item from cart
-cartSchema.methods.removeItem = async function(itemId) {
+/**
+ * Method: removeItem
+ */
+cartSchema.methods.removeItem = async function (itemId) {
   this.items.pull(itemId);
-  return this.save();
+  await this.save();
+  return this;
 };
 
-// Method to clear cart
-cartSchema.methods.clearCart = async function() {
+/**
+ * Method: clearCart
+ */
+cartSchema.methods.clearCart = async function () {
   this.items = [];
-  return this.save();
+  await this.save();
+  return this;
 };
+
+/**
+ * Static Method: getCart
+ * Find or create cart for user or session
+ */
+cartSchema.statics.getCart = async function (userId, sessionId) {
+  let cart;
+
+  if (userId) {
+    // Find by user ID
+    cart = await this.findOne({ user: userId }).populate('items.product');
+  } else if (sessionId) {
+    // Find by session ID
+    cart = await this.findOne({ sessionId }).populate('items.product');
+  }
+
+  // Create new cart if not found
+  if (!cart) {
+    cart = await this.create({
+      user: userId || undefined,
+      sessionId: userId ? undefined : sessionId
+    });
+  }
+
+  return cart;
+};
+
+/**
+ * Static Method: mergeGuestCart
+ * When guest logs in, merge their cart into user cart
+ */
+cartSchema.statics.mergeGuestCart = async function (userId, sessionId) {
+  const guestCart = await this.findOne({ sessionId }).populate('items.product');
+
+  if (!guestCart || guestCart.items.length === 0) {
+    return null; // Nothing to merge
+  }
+
+  // Get or create user cart
+  let userCart = await this.findOne({ user: userId });
+
+  if (!userCart) {
+    // No user cart - just convert guest cart to user cart
+    guestCart.user = userId;
+    guestCart.sessionId = undefined;
+    await guestCart.save();
+    return guestCart;
+  }
+
+  // Merge items from guest cart to user cart
+  for (const guestItem of guestCart.items) {
+    await userCart.addItem({
+      productId: guestItem.product._id || guestItem.product,
+      quantity: guestItem.quantity,
+      size: guestItem.size,
+      price: guestItem.price,
+      customizations: guestItem.customizations,
+      notes: guestItem.notes
+    });
+  }
+
+  // Delete guest cart
+  await guestCart.deleteOne();
+
+  return userCart;
+};
+
+// Indexes
+cartSchema.index({ user: 1 });
+cartSchema.index({ sessionId: 1 });
 
 module.exports = mongoose.model('Cart', cartSchema);
