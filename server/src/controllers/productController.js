@@ -1,207 +1,291 @@
+/**
+ * Product Controller
+ *
+ * CRUD Operations:
+ * - Create: Add new product (Admin)
+ * - Read: Get products, single product, menu
+ * - Update: Modify product, inventory (Admin)
+ * - Delete: Soft delete - mark unavailable (Admin)
+ */
 const Product = require('../models/Product');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
 const asyncHandler = require('../utils/asyncHandler');
 
-// @desc    Get all products (menu)
-// @route   GET /api/products
-// @access  Public
+/**
+ * @desc    Get all products with filtering
+ * @route   GET /api/products
+ * @access  Public
+ *
+ * Query params:
+ * - category: filter by category
+ * - vegetarian: true/false
+ * - spicy: true/false
+ * - inStock: true/false
+ * - search: text search
+ * - sort: field to sort by
+ * - page, limit: pagination
+ */
 const getProducts = asyncHandler(async (req, res) => {
-  const { category, search, isVegetarian, isSpicy, inStock, page = 1, limit = 20 } = req.query;
+  const {
+    category,
+    vegetarian,
+    spicy,
+    inStock,
+    search,
+    sort = '-createdAt',
+    page = 1,
+    limit = 20
+  } = req.query;
 
+  // Build query object
   const query = { isAvailable: true };
 
-  if (category) query.category = category;
-  if (isVegetarian === 'true') query.isVegetarian = true;
-  if (isSpicy === 'true') query.isSpicy = true;
-  if (inStock === 'true') query.inventory = { $gt: 0 };
-
-  if (search) {
-    query.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { description: { $regex: search, $options: 'i' } }
-    ];
+  if (category) {
+    query.category = category;
   }
 
-  const skip = (page - 1) * limit;
+  if (vegetarian === 'true') {
+    query.isVegetarian = true;
+  }
 
-  const [products, total] = await Promise.all([
-    Product.find(query)
-      .sort({ category: 1, name: 1 })
-      .skip(skip)
-      .limit(parseInt(limit)),
-    Product.countDocuments(query)
+  if (spicy === 'true') {
+    query.isSpicy = true;
+  }
+
+  if (inStock === 'true') {
+    query.inventory = { $gt: 0 };
+  }
+
+  // Text search
+  if (search) {
+    query.$text = { $search: search };
+  }
+
+  // Pagination
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+
+  // Execute query
+  const products = await Product.find(query)
+    .sort(sort)
+    .skip(skip)
+    .limit(parseInt(limit));
+
+  // Get total count for pagination
+  const total = await Product.countDocuments(query);
+
+  res.json(
+    new ApiResponse(200, {
+      products,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    })
+  );
+});
+
+/**
+ * @desc    Get menu grouped by category
+ * @route   GET /api/products/menu
+ * @access  Public
+ *
+ * Returns products organized by category:
+ * {
+ *   pizza: [...],
+ *   drink: [...],
+ *   bread: [...]
+ * }
+ */
+const getMenu = asyncHandler(async (req, res) => {
+  // Aggregation pipeline - powerful MongoDB feature
+  const menu = await Product.aggregate([
+    // Stage 1: Filter available products with stock
+    {
+      $match: {
+        isAvailable: true,
+        inventory: { $gt: 0 }
+      }
+    },
+    // Stage 2: Sort by name within each category
+    {
+      $sort: { name: 1 }
+    },
+    // Stage 3: Group by category
+    {
+      $group: {
+        _id: '$category',
+        products: { $push: '$$ROOT' } // $$ROOT = entire document
+      }
+    }
   ]);
 
-  ApiResponse.success({
-    products,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit)
-    }
-  }).send(res);
+  // Transform array to object
+  const menuObject = {};
+  menu.forEach(item => {
+    menuObject[item._id] = item.products;
+  });
+
+  res.json(new ApiResponse(200, { menu: menuObject }));
 });
 
-// @desc    Get products grouped by category (for menu display)
-// @route   GET /api/products/menu
-// @access  Public
-const getMenu = asyncHandler(async (req, res) => {
-  const products = await Product.find({ isAvailable: true, inventory: { $gt: 0 } })
-    .sort({ name: 1 });
-
-  const menu = {
-    pizzas: products.filter(p => p.category === 'pizza'),
-    drinks: products.filter(p => p.category === 'drink'),
-    breads: products.filter(p => p.category === 'bread')
-  };
-
-  ApiResponse.success({ menu }).send(res);
-});
-
-// @desc    Get single product
-// @route   GET /api/products/:id
-// @access  Public
+/**
+ * @desc    Get single product
+ * @route   GET /api/products/:id
+ * @access  Public
+ */
 const getProduct = asyncHandler(async (req, res) => {
   const product = await Product.findById(req.params.id);
 
   if (!product) {
-    throw ApiError.notFound('Product not found');
+    throw new ApiError(404, 'Product not found');
   }
 
-  ApiResponse.success({ product }).send(res);
+  res.json(new ApiResponse(200, { product }));
 });
 
-// @desc    Create product (Admin only)
-// @route   POST /api/products
-// @access  Private/Admin
+/**
+ * @desc    Create new product
+ * @route   POST /api/products
+ * @access  Private/Admin
+ */
 const createProduct = asyncHandler(async (req, res) => {
   const product = await Product.create(req.body);
 
-  ApiResponse.created({ product }, 'Product created successfully').send(res);
+  res.status(201).json(
+    new ApiResponse(201, { product }, 'Product created successfully')
+  );
 });
 
-// @desc    Update product (Admin only)
-// @route   PUT /api/products/:id
-// @access  Private/Admin
+/**
+ * @desc    Update product
+ * @route   PUT /api/products/:id
+ * @access  Private/Admin
+ */
 const updateProduct = asyncHandler(async (req, res) => {
   let product = await Product.findById(req.params.id);
 
   if (!product) {
-    throw ApiError.notFound('Product not found');
+    throw new ApiError(404, 'Product not found');
   }
 
+  // Update with new data
   product = await Product.findByIdAndUpdate(
     req.params.id,
     req.body,
-    { new: true, runValidators: true }
+    {
+      new: true, // Return updated document
+      runValidators: true // Run schema validators
+    }
   );
 
-  ApiResponse.success({ product }, 'Product updated successfully').send(res);
+  res.json(new ApiResponse(200, { product }, 'Product updated'));
 });
 
-// @desc    Delete product (Admin only)
-// @route   DELETE /api/products/:id
-// @access  Private/Admin
+/**
+ * @desc    Delete product (soft delete)
+ * @route   DELETE /api/products/:id
+ * @access  Private/Admin
+ *
+ * We don't actually delete - just mark unavailable.
+ * This preserves order history references.
+ */
 const deleteProduct = asyncHandler(async (req, res) => {
   const product = await Product.findById(req.params.id);
 
   if (!product) {
-    throw ApiError.notFound('Product not found');
+    throw new ApiError(404, 'Product not found');
   }
 
-  // Soft delete - just mark as unavailable
+  // Soft delete
   product.isAvailable = false;
   await product.save();
 
-  ApiResponse.success(null, 'Product deleted successfully').send(res);
+  res.json(new ApiResponse(200, null, 'Product removed from menu'));
 });
 
-// @desc    Update product inventory (Admin only)
-// @route   PUT /api/products/:id/inventory
-// @access  Private/Admin
+/**
+ * @desc    Update inventory
+ * @route   PUT /api/products/:id/inventory
+ * @access  Private/Admin
+ *
+ * Body: { action: 'add' | 'subtract' | 'set', quantity: number }
+ */
 const updateInventory = asyncHandler(async (req, res) => {
-  const { quantity, operation } = req.body;
-
+  const { action, quantity } = req.body;
   const product = await Product.findById(req.params.id);
 
   if (!product) {
-    throw ApiError.notFound('Product not found');
+    throw new ApiError(404, 'Product not found');
   }
 
-  switch (operation) {
+  if (!quantity || quantity < 0) {
+    throw new ApiError(400, 'Valid quantity is required');
+  }
+
+  switch (action) {
     case 'add':
       product.inventory += quantity;
       break;
     case 'subtract':
       if (product.inventory < quantity) {
-        throw ApiError.badRequest('Insufficient inventory');
+        throw new ApiError(400, 'Cannot subtract more than available');
       }
       product.inventory -= quantity;
       break;
     case 'set':
-      if (quantity < 0) {
-        throw ApiError.badRequest('Inventory cannot be negative');
-      }
       product.inventory = quantity;
       break;
+    default:
+      throw new ApiError(400, 'Action must be add, subtract, or set');
   }
 
   await product.save();
 
-  ApiResponse.success({ product }, 'Inventory updated successfully').send(res);
+  res.json(
+    new ApiResponse(200, {
+      product: {
+        _id: product._id,
+        name: product.name,
+        inventory: product.inventory
+      }
+    }, 'Inventory updated')
+  );
 });
 
-// @desc    Get all products for admin (including unavailable)
-// @route   GET /api/products/admin/all
-// @access  Private/Admin
+/**
+ * @desc    Get all products including unavailable (Admin)
+ * @route   GET /api/products/admin/all
+ * @access  Private/Admin
+ */
 const getAllProductsAdmin = asyncHandler(async (req, res) => {
-  const { category, search, page = 1, limit = 20 } = req.query;
+  const products = await Product.find().sort('-createdAt');
 
-  const query = {};
-
-  if (category) query.category = category;
-  if (search) {
-    query.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { description: { $regex: search, $options: 'i' } }
-    ];
-  }
-
-  const skip = (page - 1) * limit;
-
-  const [products, total] = await Promise.all([
-    Product.find(query)
-      .sort({ category: 1, name: 1 })
-      .skip(skip)
-      .limit(parseInt(limit)),
-    Product.countDocuments(query)
-  ]);
-
-  ApiResponse.success({
-    products,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit)
-    }
-  }).send(res);
+  res.json(new ApiResponse(200, { products, count: products.length }));
 });
 
-// @desc    Get low stock products (Admin only)
-// @route   GET /api/products/admin/low-stock
-// @access  Private/Admin
+/**
+ * @desc    Get low stock products
+ * @route   GET /api/products/admin/low-stock
+ * @access  Private/Admin
+ */
 const getLowStockProducts = asyncHandler(async (req, res) => {
   const threshold = parseInt(req.query.threshold) || 10;
 
   const products = await Product.find({
-    inventory: { $lte: threshold },
-    isAvailable: true
-  }).sort({ inventory: 1 });
+    isAvailable: true,
+    inventory: { $lte: threshold }
+  }).sort('inventory');
 
-  ApiResponse.success({ products, threshold }).send(res);
+  res.json(
+    new ApiResponse(200, {
+      products,
+      count: products.length,
+      threshold
+    })
+  );
 });
 
 module.exports = {

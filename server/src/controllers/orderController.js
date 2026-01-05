@@ -1,3 +1,15 @@
+/**
+ * Order Controller
+ *
+ * Checkout flow:
+ * 1. Validate cart has items
+ * 2. Check all items have sufficient stock
+ * 3. Calculate totals (with optional coupon)
+ * 4. Create order with item snapshots
+ * 5. Deduct inventory
+ * 6. Clear cart
+ * 7. Return order confirmation
+ */
 const Order = require('../models/Order');
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
@@ -6,378 +18,350 @@ const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
 const asyncHandler = require('../utils/asyncHandler');
 const { ORDER_STATUS } = require('../config/constants');
-const { sendOrderConfirmationEmail, sendOrderStatusUpdateEmail } = require('../services/emailService');
-const recommendationService = require('../services/recommendationService');
 
-// @desc    Create new order
-// @route   POST /api/orders
-// @access  Public (session-based) / Private (user-based)
+/**
+ * @desc    Create new order (checkout)
+ * @route   POST /api/orders
+ * @access  Public (with session) or Private
+ */
 const createOrder = asyncHandler(async (req, res) => {
-  const { type, customerInfo, deliveryAddress, paymentMethod, notes, couponCode } = req.body;
   const userId = req.user?._id;
   const sessionId = req.headers['x-session-id'];
+  const {
+    type,           // 'delivery' or 'carryout'
+    paymentMethod,  // 'cash', 'card', 'online'
+    deliveryAddress,
+    customerInfo,
+    couponCode      // optional
+  } = req.body;
 
-  if (!userId && !sessionId) {
-    throw ApiError.badRequest('Session ID required for guest orders');
+  // Validate required fields
+  if (!type || !paymentMethod || !customerInfo) {
+    throw new ApiError(400, 'Missing required order information');
   }
 
-  // Find cart
-  let cart;
-  if (userId) {
-    cart = await Cart.findOne({ user: userId }).populate('items.product');
-  } else {
-    cart = await Cart.findOne({ sessionId }).populate('items.product');
+  if (type === 'delivery' && !deliveryAddress) {
+    throw new ApiError(400, 'Delivery address required for delivery orders');
   }
 
-  if (!cart || cart.items.length === 0) {
-    throw ApiError.badRequest('Cart is empty');
+  // Get cart
+  const cart = await Cart.getCart(userId, sessionId);
+  await cart.populate('items.product');
+
+  if (!cart.items || cart.items.length === 0) {
+    throw new ApiError(400, 'Cart is empty');
   }
 
-  // Validate inventory for all items
+  // Validate stock for all items
   for (const item of cart.items) {
-    const product = await Product.findById(item.product._id);
+    const product = item.product;
+
+    if (!product || !product.isAvailable) {
+      throw new ApiError(400, `${product?.name || 'Product'} is no longer available`);
+    }
+
     if (!product.hasStock(item.quantity)) {
-      throw ApiError.badRequest(
-        `Insufficient stock for ${item.product.name}. Available: ${product.inventory}`
-      );
+      throw new ApiError(400, `Insufficient stock for ${product.name}`);
     }
   }
 
-  // Calculate delivery fee
-  const deliveryFee = type === 'delivery' ? 50 : 0;
-
-  // Handle coupon
-  let discount = 0;
-  let appliedCoupon = null;
-
-  if (couponCode) {
-    appliedCoupon = await Coupon.findOne({ code: couponCode.toUpperCase() });
-
-    if (appliedCoupon) {
-      // Validate coupon
-      const now = new Date();
-      if (!appliedCoupon.isActive) {
-        throw ApiError.badRequest('This coupon is no longer active');
-      }
-      if (now < appliedCoupon.validFrom || now > appliedCoupon.validUntil) {
-        throw ApiError.badRequest('This coupon is not valid');
-      }
-      if (appliedCoupon.usageLimit !== null && appliedCoupon.usedCount >= appliedCoupon.usageLimit) {
-        throw ApiError.badRequest('This coupon has reached its usage limit');
-      }
-      if (userId) {
-        const userUsages = appliedCoupon.usedBy.filter(u => u.user.toString() === userId.toString());
-        if (userUsages.length >= appliedCoupon.userUsageLimit) {
-          throw ApiError.badRequest('You have already used this coupon');
-        }
-      }
-      if (cart.subtotal < appliedCoupon.minOrderAmount) {
-        throw ApiError.badRequest(`Minimum order of ₹${appliedCoupon.minOrderAmount} required`);
-      }
-
-      discount = appliedCoupon.calculateDiscount(cart.subtotal);
-    }
-  }
-
-  // Create order items
+  // Prepare order items (snapshot cart data)
   const orderItems = cart.items.map(item => ({
     product: item.product._id,
     name: item.product.name,
     quantity: item.quantity,
     size: item.size,
     price: item.price,
-    customizations: item.customizations || [],
-    customizationTotal: item.customizationTotal || 0,
+    customizations: item.customizations,
     notes: item.notes
   }));
 
-  // Calculate total
-  const total = cart.total + deliveryFee - discount;
+  // Calculate subtotal first (needed for coupon validation)
+  const tempTotals = Order.calculateTotals(orderItems, type, 0);
 
-  // Create order
-  const order = await Order.create({
-    user: userId,
-    sessionId: userId ? undefined : sessionId,
-    items: orderItems,
-    subtotal: cart.subtotal,
-    tax: cart.tax,
-    deliveryFee,
-    discount,
-    couponCode: appliedCoupon ? appliedCoupon.code : null,
-    total: Math.max(0, total),
-    type,
-    customerInfo,
-    deliveryAddress: type === 'delivery' ? deliveryAddress : undefined,
-    paymentMethod,
-    notes,
-    estimatedDelivery: new Date(Date.now() + (type === 'delivery' ? 45 : 20) * 60000)
-  });
+  // Validate and apply coupon if provided
+  let discount = 0;
+  let couponData = null;
 
-  // Mark coupon as used
-  if (appliedCoupon) {
-    await appliedCoupon.markAsUsed(userId, order._id);
+  if (couponCode) {
+    const couponResult = await Coupon.validateCoupon(
+      couponCode,
+      tempTotals.subtotal,
+      userId
+    );
+
+    if (!couponResult.valid) {
+      throw new ApiError(400, couponResult.message);
+    }
+
+    discount = couponResult.discount;
+    couponData = {
+      code: couponResult.coupon.code,
+      discount: discount
+    };
+
+    // Mark coupon as used
+    await couponResult.coupon.markAsUsed(userId);
+  }
+
+  // Calculate final totals with discount
+  const totals = Order.calculateTotals(orderItems, type, discount);
+
+  // Create order with retry for order number collision
+  let order;
+  let retries = 3;
+
+  while (retries > 0) {
+    try {
+      const orderNumber = await Order.generateOrderNumber();
+      order = await Order.create({
+        orderNumber,
+        user: userId,
+        sessionId: userId ? undefined : sessionId,
+        items: orderItems,
+        ...totals,
+        type,
+        paymentMethod,
+        deliveryAddress: type === 'delivery' ? deliveryAddress : undefined,
+        customerInfo,
+        coupon: couponData,
+        estimatedDelivery: new Date(Date.now() + 45 * 60 * 1000) // 45 mins from now
+      });
+      break; // Success, exit loop
+    } catch (err) {
+      if (err.code === 11000 && retries > 1) {
+        // Duplicate key error, retry with new number
+        retries--;
+        continue;
+      }
+      throw err; // Other error or out of retries
+    }
   }
 
   // Deduct inventory
   for (const item of cart.items) {
-    await Product.findByIdAndUpdate(item.product._id, {
-      $inc: { inventory: -item.quantity }
-    });
+    await item.product.deductInventory(item.quantity);
   }
 
   // Clear cart
   await cart.clearCart();
 
-  // Populate order details
-  const populatedOrder = await Order.findById(order._id).populate('items.product');
-
-  // Send confirmation email (async, don't wait)
-  sendOrderConfirmationEmail(populatedOrder).catch(err => {
-    console.error('Failed to send order confirmation email:', err);
-  });
-
-  // Update user preferences for recommendations (async, don't wait)
-  if (userId) {
-    recommendationService.updatePreferencesFromOrder(userId, populatedOrder).catch(err => {
-      console.error('Failed to update user preferences:', err);
-    });
-  }
-
-  ApiResponse.created({
-    order: populatedOrder
-  }, 'Order placed successfully').send(res);
+  res.status(201).json(
+    new ApiResponse(201, { order }, 'Order placed successfully')
+  );
 });
 
-// @desc    Get order by ID
-// @route   GET /api/orders/:id
-// @access  Private
+/**
+ * @desc    Get order by ID
+ * @route   GET /api/orders/:id
+ * @access  Private (owner or admin)
+ */
 const getOrder = asyncHandler(async (req, res) => {
-  const order = await Order.findById(req.params.id).populate('items.product');
+  const order = await Order.findById(req.params.id);
 
   if (!order) {
-    throw ApiError.notFound('Order not found');
+    throw new ApiError(404, 'Order not found');
   }
 
-  // Check authorization
-  if (req.user.role !== 'admin' &&
-      order.user?.toString() !== req.user._id.toString()) {
-    throw ApiError.forbidden('Not authorized to view this order');
+  // Check ownership (unless admin)
+  if (req.user.role !== 'ADMIN') {
+    const isOwner = order.user?.toString() === req.user._id.toString();
+    if (!isOwner) {
+      throw new ApiError(403, 'Not authorized to view this order');
+    }
   }
 
-  ApiResponse.success({ order }).send(res);
+  res.json(new ApiResponse(200, { order }));
 });
 
-// @desc    Get user's orders
-// @route   GET /api/orders/my-orders
-// @access  Private
+/**
+ * @desc    Get current user's orders
+ * @route   GET /api/orders/my-orders
+ * @access  Private
+ */
 const getMyOrders = asyncHandler(async (req, res) => {
   const { status, page = 1, limit = 10 } = req.query;
 
   const query = { user: req.user._id };
   if (status) query.status = status;
 
-  const skip = (page - 1) * limit;
+  const skip = (parseInt(page) - 1) * parseInt(limit);
 
-  const [orders, total] = await Promise.all([
-    Order.find(query)
-      .populate('items.product')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit)),
-    Order.countDocuments(query)
-  ]);
+  const orders = await Order.find(query)
+    .sort('-createdAt')
+    .skip(skip)
+    .limit(parseInt(limit));
 
-  ApiResponse.success({
-    orders,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit)
-    }
-  }).send(res);
+  const total = await Order.countDocuments(query);
+
+  res.json(
+    new ApiResponse(200, {
+      orders,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    })
+  );
 });
 
-// @desc    Get all orders (Admin only)
-// @route   GET /api/orders
-// @access  Private/Admin
-const getAllOrders = asyncHandler(async (req, res) => {
-  const { status, type, startDate, endDate, page = 1, limit = 20 } = req.query;
+/**
+ * @desc    Track order by order number (public)
+ * @route   GET /api/orders/track/:orderNumber
+ * @access  Public
+ */
+const trackOrder = asyncHandler(async (req, res) => {
+  const { orderNumber } = req.params;
 
-  const query = {};
-  if (status) query.status = status;
-  if (type) query.type = type;
-  if (startDate && endDate) {
-    query.createdAt = {
-      $gte: new Date(startDate),
-      $lte: new Date(endDate)
-    };
-  }
-
-  const skip = (page - 1) * limit;
-
-  const [orders, total] = await Promise.all([
-    Order.find(query)
-      .populate('user', 'name email')
-      .populate('items.product')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit)),
-    Order.countDocuments(query)
-  ]);
-
-  ApiResponse.success({
-    orders,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit)
-    }
-  }).send(res);
-});
-
-// @desc    Update order status (Admin only)
-// @route   PUT /api/orders/:id/status
-// @access  Private/Admin
-const updateOrderStatus = asyncHandler(async (req, res) => {
-  const { status } = req.body;
-
-  const order = await Order.findById(req.params.id);
+  const order = await Order.findOne({ orderNumber });
 
   if (!order) {
-    throw ApiError.notFound('Order not found');
+    throw new ApiError(404, 'Order not found');
   }
 
-  // Validate status transition
-  const validTransitions = {
-    [ORDER_STATUS.PENDING]: [ORDER_STATUS.CONFIRMED, ORDER_STATUS.CANCELLED],
-    [ORDER_STATUS.CONFIRMED]: [ORDER_STATUS.PREPARING, ORDER_STATUS.CANCELLED],
-    [ORDER_STATUS.PREPARING]: [ORDER_STATUS.READY, ORDER_STATUS.CANCELLED],
-    [ORDER_STATUS.READY]: [ORDER_STATUS.DELIVERED],
-    [ORDER_STATUS.DELIVERED]: [],
-    [ORDER_STATUS.CANCELLED]: []
-  };
-
-  if (!validTransitions[order.status]?.includes(status)) {
-    throw ApiError.badRequest(
-      `Cannot transition from ${order.status} to ${status}`
-    );
-  }
-
-  order.status = status;
-
-  if (status === ORDER_STATUS.DELIVERED) {
-    order.completedAt = new Date();
-    order.paymentStatus = 'paid';
-  }
-
-  // If cancelled, restore inventory
-  if (status === ORDER_STATUS.CANCELLED) {
-    for (const item of order.items) {
-      await Product.findByIdAndUpdate(item.product, {
-        $inc: { inventory: item.quantity }
-      });
-    }
-  }
-
-  await order.save();
-
-  // Send status update email (async, don't wait)
-  sendOrderStatusUpdateEmail(order).catch(err => {
-    console.error('Failed to send order status update email:', err);
-  });
-
-  ApiResponse.success({ order }, 'Order status updated').send(res);
+  // Return limited info for public tracking
+  res.json(
+    new ApiResponse(200, {
+      order: {
+        orderNumber: order.orderNumber,
+        status: order.status,
+        type: order.type,
+        items: order.items.map(i => ({
+          name: i.name,
+          quantity: i.quantity,
+          size: i.size
+        })),
+        total: order.total,
+        estimatedDelivery: order.estimatedDelivery,
+        createdAt: order.createdAt
+      }
+    })
+  );
 });
 
-// @desc    Cancel order
-// @route   PUT /api/orders/:id/cancel
-// @access  Private
+/**
+ * @desc    Cancel order
+ * @route   PUT /api/orders/:id/cancel
+ * @access  Private (owner or admin)
+ */
 const cancelOrder = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id);
 
   if (!order) {
-    throw ApiError.notFound('Order not found');
+    throw new ApiError(404, 'Order not found');
   }
 
-  // Check authorization
-  if (req.user.role !== 'admin' &&
-      order.user?.toString() !== req.user._id.toString()) {
-    throw ApiError.forbidden('Not authorized to cancel this order');
+  // Check ownership
+  if (req.user.role !== 'ADMIN') {
+    const isOwner = order.user?.toString() === req.user._id.toString();
+    if (!isOwner) {
+      throw new ApiError(403, 'Not authorized');
+    }
   }
 
-  // Can only cancel pending or confirmed orders
-  if (![ORDER_STATUS.PENDING, ORDER_STATUS.CONFIRMED].includes(order.status)) {
-    throw ApiError.badRequest('Order cannot be cancelled at this stage');
+  // Check if can be cancelled
+  if (!order.canTransitionTo(ORDER_STATUS.CANCELLED)) {
+    throw new ApiError(400, `Cannot cancel order with status: ${order.status}`);
   }
-
-  order.status = ORDER_STATUS.CANCELLED;
 
   // Restore inventory
   for (const item of order.items) {
-    await Product.findByIdAndUpdate(item.product, {
-      $inc: { inventory: item.quantity }
-    });
+    const product = await Product.findById(item.product);
+    if (product) {
+      await product.addInventory(item.quantity);
+    }
   }
 
-  await order.save();
+  // Update status
+  await order.updateStatus(ORDER_STATUS.CANCELLED);
 
-  ApiResponse.success({ order }, 'Order cancelled successfully').send(res);
+  res.json(new ApiResponse(200, { order }, 'Order cancelled'));
 });
 
-// @desc    Get order analytics (Admin only)
-// @route   GET /api/orders/analytics
-// @access  Private/Admin
-const getOrderAnalytics = asyncHandler(async (req, res) => {
+/**
+ * @desc    Get all orders (Admin)
+ * @route   GET /api/orders
+ * @access  Private/Admin
+ */
+const getAllOrders = asyncHandler(async (req, res) => {
+  const { status, type, page = 1, limit = 20 } = req.query;
+
+  const query = {};
+  if (status) query.status = status;
+  if (type) query.type = type;
+
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+
+  const orders = await Order.find(query)
+    .populate('user', 'name email')
+    .sort('-createdAt')
+    .skip(skip)
+    .limit(parseInt(limit));
+
+  const total = await Order.countDocuments(query);
+
+  res.json(
+    new ApiResponse(200, {
+      orders,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    })
+  );
+});
+
+/**
+ * @desc    Update order status (Admin)
+ * @route   PUT /api/orders/:id/status
+ * @access  Private/Admin
+ */
+const updateOrderStatus = asyncHandler(async (req, res) => {
+  const { status } = req.body;
+
+  if (!status || !Object.values(ORDER_STATUS).includes(status)) {
+    throw new ApiError(400, 'Invalid status');
+  }
+
+  const order = await Order.findById(req.params.id);
+
+  if (!order) {
+    throw new ApiError(404, 'Order not found');
+  }
+
+  if (!order.canTransitionTo(status)) {
+    throw new ApiError(400, `Cannot transition from ${order.status} to ${status}`);
+  }
+
+  await order.updateStatus(status);
+
+  res.json(new ApiResponse(200, { order }, `Order status updated to ${status}`));
+});
+
+/**
+ * @desc    Get order analytics (Admin)
+ * @route   GET /api/orders/admin/analytics
+ * @access  Private/Admin
+ */
+const getAnalytics = asyncHandler(async (req, res) => {
   const { startDate, endDate } = req.query;
 
   const analytics = await Order.getAnalytics(startDate, endDate);
-  const popularItems = await Order.getPopularItems(10);
 
-  // Get recent orders count by status
-  const recentOrdersByStatus = await Order.aggregate([
-    {
-      $match: {
-        createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-      }
-    },
-    {
-      $group: {
-        _id: '$status',
-        count: { $sum: 1 }
-      }
-    }
-  ]);
-
-  ApiResponse.success({
-    analytics,
-    popularItems,
-    recentOrdersByStatus
-  }).send(res);
-});
-
-// @desc    Get order by order number (for tracking)
-// @route   GET /api/orders/track/:orderNumber
-// @access  Public
-const trackOrder = asyncHandler(async (req, res) => {
-  const order = await Order.findOne({ orderNumber: req.params.orderNumber })
-    .select('orderNumber status type estimatedDelivery createdAt items.name items.quantity');
-
-  if (!order) {
-    throw ApiError.notFound('Order not found');
-  }
-
-  ApiResponse.success({ order }).send(res);
+  res.json(new ApiResponse(200, { analytics }));
 });
 
 module.exports = {
   createOrder,
   getOrder,
   getMyOrders,
+  trackOrder,
+  cancelOrder,
   getAllOrders,
   updateOrderStatus,
-  cancelOrder,
-  getOrderAnalytics,
-  trackOrder
+  getAnalytics
 };

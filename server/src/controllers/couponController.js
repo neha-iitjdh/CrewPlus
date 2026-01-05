@@ -1,226 +1,211 @@
+/**
+ * Coupon Controller
+ *
+ * Public: Validate coupon at checkout
+ * Admin: Full CRUD operations
+ */
 const Coupon = require('../models/Coupon');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
 const asyncHandler = require('../utils/asyncHandler');
 
-// @desc    Create coupon (Admin only)
-// @route   POST /api/coupons
-// @access  Private/Admin
-const createCoupon = asyncHandler(async (req, res) => {
-  const {
-    code,
-    description,
-    type,
-    value,
-    minOrderAmount,
-    maxDiscount,
-    usageLimit,
-    userUsageLimit,
-    validFrom,
-    validUntil,
-    applicableCategories
-  } = req.body;
-
-  // Check if coupon code already exists
-  const existingCoupon = await Coupon.findOne({ code: code.toUpperCase() });
-  if (existingCoupon) {
-    throw ApiError.badRequest('Coupon code already exists');
-  }
-
-  const coupon = await Coupon.create({
-    code: code.toUpperCase(),
-    description,
-    type,
-    value,
-    minOrderAmount,
-    maxDiscount,
-    usageLimit,
-    userUsageLimit,
-    validFrom,
-    validUntil,
-    applicableCategories
-  });
-
-  ApiResponse.created({ coupon }, 'Coupon created successfully').send(res);
-});
-
-// @desc    Get all coupons (Admin only)
-// @route   GET /api/coupons
-// @access  Private/Admin
-const getAllCoupons = asyncHandler(async (req, res) => {
-  const { isActive, page = 1, limit = 20 } = req.query;
-
-  const query = {};
-  if (isActive !== undefined) query.isActive = isActive === 'true';
-
-  const skip = (page - 1) * limit;
-
-  const [coupons, total] = await Promise.all([
-    Coupon.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit)),
-    Coupon.countDocuments(query)
-  ]);
-
-  ApiResponse.success({
-    coupons,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit)
-    }
-  }).send(res);
-});
-
-// @desc    Get coupon by ID (Admin only)
-// @route   GET /api/coupons/:id
-// @access  Private/Admin
-const getCoupon = asyncHandler(async (req, res) => {
-  const coupon = await Coupon.findById(req.params.id);
-
-  if (!coupon) {
-    throw ApiError.notFound('Coupon not found');
-  }
-
-  ApiResponse.success({ coupon }).send(res);
-});
-
-// @desc    Update coupon (Admin only)
-// @route   PUT /api/coupons/:id
-// @access  Private/Admin
-const updateCoupon = asyncHandler(async (req, res) => {
-  const coupon = await Coupon.findById(req.params.id);
-
-  if (!coupon) {
-    throw ApiError.notFound('Coupon not found');
-  }
-
-  const allowedUpdates = [
-    'description',
-    'type',
-    'value',
-    'minOrderAmount',
-    'maxDiscount',
-    'usageLimit',
-    'userUsageLimit',
-    'validFrom',
-    'validUntil',
-    'isActive',
-    'applicableCategories'
-  ];
-
-  allowedUpdates.forEach(field => {
-    if (req.body[field] !== undefined) {
-      coupon[field] = req.body[field];
-    }
-  });
-
-  await coupon.save();
-
-  ApiResponse.success({ coupon }, 'Coupon updated successfully').send(res);
-});
-
-// @desc    Delete coupon (Admin only)
-// @route   DELETE /api/coupons/:id
-// @access  Private/Admin
-const deleteCoupon = asyncHandler(async (req, res) => {
-  const coupon = await Coupon.findById(req.params.id);
-
-  if (!coupon) {
-    throw ApiError.notFound('Coupon not found');
-  }
-
-  await Coupon.findByIdAndDelete(req.params.id);
-
-  ApiResponse.success(null, 'Coupon deleted successfully').send(res);
-});
-
-// @desc    Validate and apply coupon
-// @route   POST /api/coupons/validate
-// @access  Public (session-based) / Private (user-based)
+/**
+ * @desc    Validate coupon (used during checkout)
+ * @route   POST /api/coupons/validate
+ * @access  Public (with optional auth)
+ *
+ * Body: { code: string, subtotal: number }
+ */
 const validateCoupon = asyncHandler(async (req, res) => {
   const { code, subtotal } = req.body;
   const userId = req.user?._id;
 
   if (!code) {
-    throw ApiError.badRequest('Coupon code is required');
+    throw new ApiError(400, 'Coupon code is required');
   }
 
-  const coupon = await Coupon.findOne({ code: code.toUpperCase() });
-
-  if (!coupon) {
-    throw ApiError.notFound('Coupon not found');
+  if (!subtotal || subtotal <= 0) {
+    throw new ApiError(400, 'Valid subtotal is required');
   }
 
-  // Check if coupon is valid
-  const now = new Date();
-  if (!coupon.isActive) {
-    throw ApiError.badRequest('This coupon is no longer active');
+  const result = await Coupon.validateCoupon(code, subtotal, userId);
+
+  if (!result.valid) {
+    throw new ApiError(400, result.message);
   }
 
-  if (now < coupon.validFrom) {
-    throw ApiError.badRequest('This coupon is not yet valid');
-  }
-
-  if (now > coupon.validUntil) {
-    throw ApiError.badRequest('This coupon has expired');
-  }
-
-  if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) {
-    throw ApiError.badRequest('This coupon has reached its usage limit');
-  }
-
-  // Check user usage limit
-  if (userId) {
-    const userUsages = coupon.usedBy.filter(u => u.user.toString() === userId.toString());
-    if (userUsages.length >= coupon.userUsageLimit) {
-      throw ApiError.badRequest('You have already used this coupon the maximum number of times');
-    }
-  }
-
-  // Check minimum order amount
-  if (subtotal < coupon.minOrderAmount) {
-    throw ApiError.badRequest(`Minimum order amount of ₹${coupon.minOrderAmount} required for this coupon`);
-  }
-
-  // Calculate discount
-  const discount = coupon.calculateDiscount(subtotal);
-
-  ApiResponse.success({
-    coupon: {
-      code: coupon.code,
-      description: coupon.description,
-      type: coupon.type,
-      value: coupon.value,
-      discount
-    }
-  }, 'Coupon applied successfully').send(res);
+  res.json(
+    new ApiResponse(200, {
+      code: result.coupon.code,
+      type: result.coupon.type,
+      discount: result.discount,
+      message: result.message
+    })
+  );
 });
 
-// @desc    Toggle coupon status (Admin only)
-// @route   PUT /api/coupons/:id/toggle
-// @access  Private/Admin
+/**
+ * @desc    Get all coupons (Admin)
+ * @route   GET /api/coupons
+ * @access  Private/Admin
+ */
+const getAllCoupons = asyncHandler(async (req, res) => {
+  const { active, page = 1, limit = 20 } = req.query;
+
+  const query = {};
+  if (active === 'true') query.isActive = true;
+  if (active === 'false') query.isActive = false;
+
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+
+  const coupons = await Coupon.find(query)
+    .sort('-createdAt')
+    .skip(skip)
+    .limit(parseInt(limit));
+
+  const total = await Coupon.countDocuments(query);
+
+  res.json(
+    new ApiResponse(200, {
+      coupons,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    })
+  );
+});
+
+/**
+ * @desc    Get single coupon (Admin)
+ * @route   GET /api/coupons/:id
+ * @access  Private/Admin
+ */
+const getCoupon = asyncHandler(async (req, res) => {
+  const coupon = await Coupon.findById(req.params.id);
+
+  if (!coupon) {
+    throw new ApiError(404, 'Coupon not found');
+  }
+
+  res.json(new ApiResponse(200, { coupon }));
+});
+
+/**
+ * @desc    Create coupon (Admin)
+ * @route   POST /api/coupons
+ * @access  Private/Admin
+ */
+const createCoupon = asyncHandler(async (req, res) => {
+  const {
+    code,
+    type,
+    value,
+    minOrderAmount,
+    maxDiscount,
+    usageLimit,
+    userUsageLimit,
+    validFrom,
+    validUntil,
+    description
+  } = req.body;
+
+  // Validate percentage is <= 100
+  if (type === 'percentage' && value > 100) {
+    throw new ApiError(400, 'Percentage discount cannot exceed 100%');
+  }
+
+  const coupon = await Coupon.create({
+    code,
+    type,
+    value,
+    minOrderAmount,
+    maxDiscount,
+    usageLimit,
+    userUsageLimit,
+    validFrom,
+    validUntil,
+    description
+  });
+
+  res.status(201).json(
+    new ApiResponse(201, { coupon }, 'Coupon created successfully')
+  );
+});
+
+/**
+ * @desc    Update coupon (Admin)
+ * @route   PUT /api/coupons/:id
+ * @access  Private/Admin
+ */
+const updateCoupon = asyncHandler(async (req, res) => {
+  let coupon = await Coupon.findById(req.params.id);
+
+  if (!coupon) {
+    throw new ApiError(404, 'Coupon not found');
+  }
+
+  // Don't allow changing code (could break references)
+  delete req.body.code;
+  delete req.body.usedCount;
+  delete req.body.usedBy;
+
+  coupon = await Coupon.findByIdAndUpdate(
+    req.params.id,
+    req.body,
+    { new: true, runValidators: true }
+  );
+
+  res.json(new ApiResponse(200, { coupon }, 'Coupon updated'));
+});
+
+/**
+ * @desc    Delete coupon (Admin)
+ * @route   DELETE /api/coupons/:id
+ * @access  Private/Admin
+ */
+const deleteCoupon = asyncHandler(async (req, res) => {
+  const coupon = await Coupon.findById(req.params.id);
+
+  if (!coupon) {
+    throw new ApiError(404, 'Coupon not found');
+  }
+
+  await coupon.deleteOne();
+
+  res.json(new ApiResponse(200, null, 'Coupon deleted'));
+});
+
+/**
+ * @desc    Toggle coupon active status (Admin)
+ * @route   PUT /api/coupons/:id/toggle
+ * @access  Private/Admin
+ */
 const toggleCouponStatus = asyncHandler(async (req, res) => {
   const coupon = await Coupon.findById(req.params.id);
 
   if (!coupon) {
-    throw ApiError.notFound('Coupon not found');
+    throw new ApiError(404, 'Coupon not found');
   }
 
   coupon.isActive = !coupon.isActive;
   await coupon.save();
 
-  ApiResponse.success({ coupon }, `Coupon ${coupon.isActive ? 'activated' : 'deactivated'} successfully`).send(res);
+  res.json(
+    new ApiResponse(200, { coupon },
+      `Coupon ${coupon.isActive ? 'activated' : 'deactivated'}`
+    )
+  );
 });
 
 module.exports = {
-  createCoupon,
+  validateCoupon,
   getAllCoupons,
   getCoupon,
+  createCoupon,
   updateCoupon,
   deleteCoupon,
-  validateCoupon,
   toggleCouponStatus
 };

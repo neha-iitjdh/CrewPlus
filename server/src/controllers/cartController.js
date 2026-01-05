@@ -1,273 +1,209 @@
+/**
+ * Cart Controller
+ *
+ * Handles cart operations for both guests and logged-in users.
+ *
+ * Session ID Flow:
+ * 1. Frontend generates sessionId and stores in sessionStorage
+ * 2. Sends sessionId in header: x-session-id
+ * 3. Backend uses sessionId to find/create guest cart
+ * 4. On login, frontend calls /merge to combine carts
+ */
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
-const Customization = require('../models/Customization');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
 const asyncHandler = require('../utils/asyncHandler');
 
-// Helper to get or create cart
-const getOrCreateCart = async (userId, sessionId) => {
-  let cart;
+/**
+ * Helper: Get user ID or session ID from request
+ */
+const getCartIdentifier = (req) => {
+  const userId = req.user?._id;
+  const sessionId = req.headers['x-session-id'];
 
-  if (userId) {
-    cart = await Cart.findOne({ user: userId }).populate('items.product');
-  } else if (sessionId) {
-    cart = await Cart.findOne({ sessionId }).populate('items.product');
+  if (!userId && !sessionId) {
+    throw new ApiError(400, 'Session ID required for guest cart');
   }
 
-  if (!cart) {
-    cart = new Cart({
-      user: userId || undefined,
-      sessionId: userId ? undefined : sessionId,
-      items: []
-    });
-    await cart.save();
-  }
-
-  return cart;
+  return { userId, sessionId };
 };
 
-// @desc    Get cart
-// @route   GET /api/cart
-// @access  Public (session-based) / Private (user-based)
+/**
+ * @desc    Get current cart
+ * @route   GET /api/cart
+ * @access  Public (with session) or Private
+ */
 const getCart = asyncHandler(async (req, res) => {
-  const userId = req.user?._id;
-  const sessionId = req.headers['x-session-id'];
+  const { userId, sessionId } = getCartIdentifier(req);
 
-  if (!userId && !sessionId) {
-    throw ApiError.badRequest('Session ID required for guest cart');
-  }
+  const cart = await Cart.getCart(userId, sessionId);
 
-  const cart = await getOrCreateCart(userId, sessionId);
+  // Populate product details
+  await cart.populate('items.product');
 
-  ApiResponse.success({ cart }).send(res);
+  res.json(new ApiResponse(200, { cart }));
 });
 
-// @desc    Add item to cart
-// @route   POST /api/cart/items
-// @access  Public (session-based) / Private (user-based)
+/**
+ * @desc    Add item to cart
+ * @route   POST /api/cart/items
+ * @access  Public (with session) or Private
+ *
+ * Body: {
+ *   productId: string,
+ *   quantity: number,
+ *   size: string,
+ *   customizations: [{ name, price }],
+ *   notes: string
+ * }
+ */
 const addToCart = asyncHandler(async (req, res) => {
-  const { productId, quantity, size = 'medium', notes, customizations = [] } = req.body;
-  const userId = req.user?._id;
-  const sessionId = req.headers['x-session-id'];
+  const { userId, sessionId } = getCartIdentifier(req);
+  const { productId, quantity = 1, size = 'medium', customizations = [], notes } = req.body;
 
-  if (!userId && !sessionId) {
-    throw ApiError.badRequest('Session ID required for guest cart');
-  }
-
-  // Check if product exists and has stock
+  // Validate product exists and is available
   const product = await Product.findById(productId);
+
   if (!product) {
-    throw ApiError.notFound('Product not found');
+    throw new ApiError(404, 'Product not found');
   }
 
   if (!product.isAvailable) {
-    throw ApiError.badRequest('Product is not available');
+    throw new ApiError(400, 'Product is not available');
   }
 
+  // Check stock
   if (!product.hasStock(quantity)) {
-    throw ApiError.badRequest(`Only ${product.inventory} items available in stock`);
+    throw new ApiError(400, `Only ${product.inventory} items available`);
   }
+
+  // Get price for selected size
+  const price = product.getPrice(size);
 
   // Get or create cart
-  let cart = await getOrCreateCart(userId, sessionId);
+  const cart = await Cart.getCart(userId, sessionId);
 
-  // Calculate price based on size
-  let price = product.price;
-  if (product.prices && product.prices[size]) {
-    price = product.prices[size];
-  }
+  // Add item
+  await cart.addItem({
+    productId,
+    quantity,
+    size,
+    price,
+    customizations,
+    notes
+  });
 
-  // Process customizations if provided
-  let processedCustomizations = [];
-  let customizationTotal = 0;
+  // Populate for response
+  await cart.populate('items.product');
 
-  if (customizations.length > 0) {
-    const customizationIds = customizations.map(c => c.customizationId || c);
-    const customizationDocs = await Customization.find({
-      _id: { $in: customizationIds },
-      isAvailable: true
-    });
-
-    processedCustomizations = customizationDocs.map(cust => ({
-      customization: cust._id,
-      name: cust.name,
-      price: cust.price
-    }));
-
-    customizationTotal = processedCustomizations.reduce((sum, c) => sum + c.price, 0);
-  }
-
-  // Add item to cart with customizations
-  await cart.addItem(productId, quantity, size, price, notes, processedCustomizations, customizationTotal);
-
-  // Reload with populated data
-  cart = await Cart.findById(cart._id).populate('items.product');
-
-  ApiResponse.success({ cart }, 'Item added to cart').send(res);
+  res.status(201).json(
+    new ApiResponse(201, { cart }, 'Item added to cart')
+  );
 });
 
-// @desc    Update cart item quantity
-// @route   PUT /api/cart/items/:itemId
-// @access  Public (session-based) / Private (user-based)
+/**
+ * @desc    Update cart item quantity
+ * @route   PUT /api/cart/items/:itemId
+ * @access  Public (with session) or Private
+ *
+ * Body: { quantity: number }
+ */
 const updateCartItem = asyncHandler(async (req, res) => {
+  const { userId, sessionId } = getCartIdentifier(req);
   const { itemId } = req.params;
   const { quantity } = req.body;
-  const userId = req.user?._id;
-  const sessionId = req.headers['x-session-id'];
 
-  if (!userId && !sessionId) {
-    throw ApiError.badRequest('Session ID required for guest cart');
+  if (quantity === undefined) {
+    throw new ApiError(400, 'Quantity is required');
   }
 
-  let cart;
-  if (userId) {
-    cart = await Cart.findOne({ user: userId });
-  } else {
-    cart = await Cart.findOne({ sessionId });
-  }
+  const cart = await Cart.getCart(userId, sessionId);
 
-  if (!cart) {
-    throw ApiError.notFound('Cart not found');
-  }
-
+  // Find the item to check stock
   const item = cart.items.id(itemId);
   if (!item) {
-    throw ApiError.notFound('Item not found in cart');
+    throw new ApiError(404, 'Item not found in cart');
   }
 
   // Check stock if increasing quantity
   if (quantity > item.quantity) {
     const product = await Product.findById(item.product);
     if (!product.hasStock(quantity)) {
-      throw ApiError.badRequest(`Only ${product.inventory} items available in stock`);
+      throw new ApiError(400, `Only ${product.inventory} items available`);
     }
   }
 
+  // Update quantity (removes if <= 0)
   await cart.updateItemQuantity(itemId, quantity);
 
-  // Reload with populated data
-  cart = await Cart.findById(cart._id).populate('items.product');
+  await cart.populate('items.product');
 
-  ApiResponse.success({ cart }, 'Cart updated').send(res);
+  res.json(new ApiResponse(200, { cart }, 'Cart updated'));
 });
 
-// @desc    Remove item from cart
-// @route   DELETE /api/cart/items/:itemId
-// @access  Public (session-based) / Private (user-based)
+/**
+ * @desc    Remove item from cart
+ * @route   DELETE /api/cart/items/:itemId
+ * @access  Public (with session) or Private
+ */
 const removeFromCart = asyncHandler(async (req, res) => {
+  const { userId, sessionId } = getCartIdentifier(req);
   const { itemId } = req.params;
-  const userId = req.user?._id;
-  const sessionId = req.headers['x-session-id'];
 
-  if (!userId && !sessionId) {
-    throw ApiError.badRequest('Session ID required for guest cart');
-  }
-
-  let cart;
-  if (userId) {
-    cart = await Cart.findOne({ user: userId });
-  } else {
-    cart = await Cart.findOne({ sessionId });
-  }
-
-  if (!cart) {
-    throw ApiError.notFound('Cart not found');
-  }
+  const cart = await Cart.getCart(userId, sessionId);
 
   await cart.removeItem(itemId);
 
-  // Reload with populated data
-  cart = await Cart.findById(cart._id).populate('items.product');
+  await cart.populate('items.product');
 
-  ApiResponse.success({ cart }, 'Item removed from cart').send(res);
+  res.json(new ApiResponse(200, { cart }, 'Item removed'));
 });
 
-// @desc    Clear cart
-// @route   DELETE /api/cart
-// @access  Public (session-based) / Private (user-based)
+/**
+ * @desc    Clear entire cart
+ * @route   DELETE /api/cart
+ * @access  Public (with session) or Private
+ */
 const clearCart = asyncHandler(async (req, res) => {
-  const userId = req.user?._id;
-  const sessionId = req.headers['x-session-id'];
+  const { userId, sessionId } = getCartIdentifier(req);
 
-  if (!userId && !sessionId) {
-    throw ApiError.badRequest('Session ID required for guest cart');
-  }
-
-  let cart;
-  if (userId) {
-    cart = await Cart.findOne({ user: userId });
-  } else {
-    cart = await Cart.findOne({ sessionId });
-  }
-
-  if (!cart) {
-    throw ApiError.notFound('Cart not found');
-  }
+  const cart = await Cart.getCart(userId, sessionId);
 
   await cart.clearCart();
 
-  ApiResponse.success({ cart }, 'Cart cleared').send(res);
+  res.json(new ApiResponse(200, { cart }, 'Cart cleared'));
 });
 
-// @desc    Merge guest cart with user cart after login
-// @route   POST /api/cart/merge
-// @access  Private
+/**
+ * @desc    Merge guest cart into user cart (after login)
+ * @route   POST /api/cart/merge
+ * @access  Private
+ *
+ * Body: { sessionId: string }
+ *
+ * Called by frontend after successful login:
+ * 1. User was browsing as guest, added items
+ * 2. User logs in
+ * 3. Frontend calls this to merge guest cart into user cart
+ */
 const mergeCart = asyncHandler(async (req, res) => {
-  const { sessionId } = req.body;
   const userId = req.user._id;
+  const { sessionId } = req.body;
 
   if (!sessionId) {
-    throw ApiError.badRequest('Session ID required');
+    throw new ApiError(400, 'Session ID is required');
   }
 
-  // Find guest cart
-  const guestCart = await Cart.findOne({ sessionId }).populate('items.product');
+  const cart = await Cart.mergeGuestCart(userId, sessionId);
 
-  if (!guestCart || guestCart.items.length === 0) {
-    // No guest cart to merge, just return user's cart
-    let userCart = await Cart.findOne({ user: userId }).populate('items.product');
-    if (!userCart) {
-      userCart = await Cart.create({ user: userId, items: [] });
-    }
-    return ApiResponse.success({ cart: userCart }).send(res);
+  if (cart) {
+    await cart.populate('items.product');
   }
 
-  // Get or create user cart
-  let userCart = await Cart.findOne({ user: userId });
-  if (!userCart) {
-    userCart = await Cart.create({ user: userId, items: [] });
-  }
-
-  // Merge items
-  for (const guestItem of guestCart.items) {
-    const existingItem = userCart.items.find(
-      item => item.product.toString() === guestItem.product._id.toString() &&
-              item.size === guestItem.size
-    );
-
-    if (existingItem) {
-      existingItem.quantity += guestItem.quantity;
-    } else {
-      userCart.items.push({
-        product: guestItem.product._id,
-        quantity: guestItem.quantity,
-        size: guestItem.size,
-        price: guestItem.price,
-        notes: guestItem.notes
-      });
-    }
-  }
-
-  await userCart.save();
-
-  // Delete guest cart
-  await Cart.findByIdAndDelete(guestCart._id);
-
-  // Reload with populated data
-  userCart = await Cart.findById(userCart._id).populate('items.product');
-
-  ApiResponse.success({ cart: userCart }, 'Cart merged successfully').send(res);
+  res.json(
+    new ApiResponse(200, { cart }, cart ? 'Carts merged' : 'No guest cart to merge')
+  );
 });
 
 module.exports = {
