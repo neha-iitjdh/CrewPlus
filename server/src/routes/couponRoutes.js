@@ -1,23 +1,29 @@
+/**
+ * Coupon Routes
+ *
+ * Public: validate (for checkout)
+ * Admin: full CRUD
+ */
 const express = require('express');
 const router = express.Router();
+const { protect, optionalAuth, isAdmin } = require('../middleware/auth');
 const {
-  createCoupon,
+  validateCoupon,
   getAllCoupons,
   getCoupon,
+  createCoupon,
   updateCoupon,
   deleteCoupon,
-  validateCoupon,
   toggleCouponStatus
 } = require('../controllers/couponController');
-const { protect, isAdmin, optionalAuth } = require('../middleware/auth');
 
-// Public/User routes
+// Public: Validate coupon (optional auth to check per-user limits)
 router.post('/validate', optionalAuth, validateCoupon);
 
 // Admin routes
 router.get('/', protect, isAdmin, getAllCoupons);
-router.post('/', protect, isAdmin, createCoupon);
 router.get('/:id', protect, isAdmin, getCoupon);
+router.post('/', protect, isAdmin, createCoupon);
 router.put('/:id', protect, isAdmin, updateCoupon);
 router.delete('/:id', protect, isAdmin, deleteCoupon);
 router.put('/:id/toggle', protect, isAdmin, toggleCouponStatus);

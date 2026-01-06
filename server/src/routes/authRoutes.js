@@ -1,38 +1,34 @@
+/**
+ * Auth Routes
+ *
+ * Routes define URL endpoints and connect them to controllers.
+ * Think of routes as a "menu" of available endpoints.
+ *
+ * Pattern:
+ *   router.METHOD('/path', middleware?, controller)
+ */
 const express = require('express');
 const router = express.Router();
+const { protect, isAdmin } = require('../middleware/auth');
 const {
   register,
   login,
   getMe,
   updateProfile,
   changePassword,
-  getAllUsers,
-  createUser,
-  updateUserRole,
-  toggleUserStatus
+  getAllUsers
 } = require('../controllers/authController');
-const { protect, isAdmin } = require('../middleware/auth');
-const validate = require('../middleware/validate');
-const {
-  registerValidator,
-  loginValidator,
-  updateProfileValidator,
-  changePasswordValidator
-} = require('../validators/authValidator');
 
-// Public routes
-router.post('/register', registerValidator, validate, register);
-router.post('/login', loginValidator, validate, login);
+// Public routes (no auth needed)
+router.post('/register', register);
+router.post('/login', login);
 
-// Protected routes
+// Protected routes (must be logged in)
 router.get('/me', protect, getMe);
-router.put('/profile', protect, updateProfileValidator, validate, updateProfile);
-router.put('/password', protect, changePasswordValidator, validate, changePassword);
+router.put('/profile', protect, updateProfile);
+router.put('/password', protect, changePassword);
 
 // Admin routes
 router.get('/users', protect, isAdmin, getAllUsers);
-router.post('/users', protect, isAdmin, registerValidator, validate, createUser);
-router.put('/users/:id/role', protect, isAdmin, updateUserRole);
-router.put('/users/:id/status', protect, isAdmin, toggleUserStatus);
 
 module.exports = router;

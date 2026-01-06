@@ -1,37 +1,60 @@
+/**
+ * Order Routes
+ *
+ * Mixed access levels:
+ * - Public: track order by number
+ * - Optional auth: create order (guests can order)
+ * - Private: view own orders
+ * - Admin: manage all orders
+ */
 const express = require('express');
 const router = express.Router();
+const { protect, optionalAuth, isAdmin } = require('../middleware/auth');
 const {
   createOrder,
   getOrder,
   getMyOrders,
+  trackOrder,
+  cancelOrder,
   getAllOrders,
   updateOrderStatus,
-  cancelOrder,
-  getOrderAnalytics,
-  trackOrder
+  getAnalytics
 } = require('../controllers/orderController');
-const { protect, optionalAuth, isAdmin } = require('../middleware/auth');
-const validate = require('../middleware/validate');
-const {
-  createOrderValidator,
-  updateOrderStatusValidator,
-  getOrdersQueryValidator
-} = require('../validators/orderValidator');
 
-// Public route for tracking
+// ===========================================
+// PUBLIC ROUTES
+// ===========================================
+
+// Track order by order number (no auth needed)
 router.get('/track/:orderNumber', trackOrder);
 
-// Order creation (works for both guest and authenticated users)
-router.post('/', optionalAuth, createOrderValidator, validate, createOrder);
+// ===========================================
+// ADMIN ROUTES (must be before /:id to avoid conflicts)
+// ===========================================
 
-// Protected routes for customers
-router.get('/my-orders', protect, getOrdersQueryValidator, validate, getMyOrders);
+// Get analytics
+router.get('/admin/analytics', protect, isAdmin, getAnalytics);
+
+// Get all orders
+router.get('/', protect, isAdmin, getAllOrders);
+
+// Update order status
+router.put('/:id/status', protect, isAdmin, updateOrderStatus);
+
+// ===========================================
+// AUTHENTICATED ROUTES
+// ===========================================
+
+// Create order (works for guests with sessionId too)
+router.post('/', optionalAuth, createOrder);
+
+// Get my orders (requires login)
+router.get('/my-orders', protect, getMyOrders);
+
+// Get single order (owner or admin)
 router.get('/:id', protect, getOrder);
-router.put('/:id/cancel', protect, cancelOrder);
 
-// Admin routes
-router.get('/', protect, isAdmin, getOrdersQueryValidator, validate, getAllOrders);
-router.get('/admin/analytics', protect, isAdmin, getOrderAnalytics);
-router.put('/:id/status', protect, isAdmin, updateOrderStatusValidator, validate, updateOrderStatus);
+// Cancel order (owner or admin)
+router.put('/:id/cancel', protect, cancelOrder);
 
 module.exports = router;

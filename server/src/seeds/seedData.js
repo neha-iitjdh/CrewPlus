@@ -1,213 +1,188 @@
+/**
+ * Seed Data Script
+ *
+ * Populates database with sample data for testing.
+ * Run: npm run seed
+ *
+ * Creates:
+ * - 1 Admin user
+ * - 1 Customer user
+ * - 10 Products (pizzas, drinks, breads)
+ * - 3 Coupons
+ */
 require('dotenv').config();
+
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const Product = require('../models/Product');
-const connectDB = require('../config/db');
+const Coupon = require('../models/Coupon');
 
+// Sample Users
 const users = [
   {
     name: 'Admin User',
     email: 'admin@crewplus.com',
     password: 'admin123',
-    phone: '1234567890',
-    role: 'admin',
+    phone: '9999999999',
+    role: 'ADMIN',
     address: {
-      street: '123 Admin St',
-      city: 'Pizza City',
-      state: 'PC',
-      zipCode: '12345'
+      street: '123 Admin Street',
+      city: 'Mumbai',
+      state: 'Maharashtra',
+      zipCode: '400001'
     }
   },
   {
     name: 'John Customer',
     email: 'john@example.com',
-    password: 'customer123',
+    password: 'john123',
     phone: '9876543210',
-    role: 'customer',
+    role: 'CUSTOMER',
     address: {
-      street: '456 Customer Ave',
-      city: 'Order Town',
-      state: 'OT',
-      zipCode: '54321'
+      street: '456 Customer Lane',
+      city: 'Mumbai',
+      state: 'Maharashtra',
+      zipCode: '400002'
     }
-  },
-  {
-    name: 'Jane Customer',
-    email: 'jane@example.com',
-    password: 'customer123',
-    phone: '5555555555',
-    role: 'customer'
   }
 ];
 
+// Sample Products
 const products = [
   // Pizzas
   {
-    name: 'Margherita Pizza',
-    description: 'Classic pizza with fresh tomato sauce, mozzarella cheese, and basil leaves',
+    name: 'Margherita',
+    description: 'Classic tomato sauce, fresh mozzarella, basil leaves',
     category: 'pizza',
-    price: 299,
-    prices: { small: 199, medium: 299, large: 399, extra_large: 499 },
-    inventory: 50,
-    imageUrl: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=500',
+    price: 249,
+    sizes: {
+      small: { price: 199, available: true },
+      medium: { price: 299, available: true },
+      large: { price: 399, available: true },
+      extra_large: { price: 499, available: true }
+    },
+    image: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400',
     ingredients: ['Tomato Sauce', 'Mozzarella', 'Basil', 'Olive Oil'],
     isVegetarian: true,
     isSpicy: false,
-    tags: ['classic', 'vegetarian', 'bestseller']
+    inventory: 50,
+    rating: { average: 4.5, count: 120 },
+    tags: ['bestseller', 'classic']
   },
   {
-    name: 'Pepperoni Pizza',
-    description: 'Loaded with spicy pepperoni slices and melted mozzarella cheese',
+    name: 'Pepperoni',
+    description: 'Loaded with spicy pepperoni and mozzarella cheese',
     category: 'pizza',
     price: 349,
-    prices: { small: 249, medium: 349, large: 449, extra_large: 549 },
-    inventory: 45,
-    imageUrl: 'https://images.unsplash.com/photo-1628840042765-356cda07504e?w=500',
+    sizes: {
+      small: { price: 299, available: true },
+      medium: { price: 399, available: true },
+      large: { price: 499, available: true },
+      extra_large: { price: 599, available: true }
+    },
+    image: 'https://images.unsplash.com/photo-1628840042765-356cda07504e?w=400',
     ingredients: ['Tomato Sauce', 'Mozzarella', 'Pepperoni'],
     isVegetarian: false,
     isSpicy: true,
-    tags: ['meat', 'spicy', 'popular']
+    inventory: 40,
+    rating: { average: 4.7, count: 200 },
+    tags: ['bestseller', 'spicy']
   },
   {
-    name: 'BBQ Chicken Pizza',
-    description: 'Grilled chicken with BBQ sauce, red onions, and cilantro',
+    name: 'BBQ Chicken',
+    description: 'Grilled chicken, BBQ sauce, red onions, cilantro',
     category: 'pizza',
     price: 399,
-    prices: { small: 299, medium: 399, large: 499, extra_large: 599 },
-    inventory: 40,
-    imageUrl: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=500',
-    ingredients: ['BBQ Sauce', 'Mozzarella', 'Grilled Chicken', 'Red Onion', 'Cilantro'],
+    sizes: {
+      small: { price: 349, available: true },
+      medium: { price: 449, available: true },
+      large: { price: 549, available: true },
+      extra_large: { price: 649, available: true }
+    },
+    image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=400',
+    ingredients: ['BBQ Sauce', 'Grilled Chicken', 'Mozzarella', 'Red Onion', 'Cilantro'],
     isVegetarian: false,
     isSpicy: false,
-    tags: ['chicken', 'bbq']
+    inventory: 35,
+    rating: { average: 4.6, count: 150 },
+    tags: ['popular']
   },
   {
     name: 'Veggie Supreme',
-    description: 'Loaded with bell peppers, mushrooms, olives, onions, and tomatoes',
+    description: 'Bell peppers, onions, mushrooms, olives, tomatoes',
     category: 'pizza',
-    price: 349,
-    prices: { small: 249, medium: 349, large: 449, extra_large: 549 },
-    inventory: 35,
-    imageUrl: 'https://images.unsplash.com/photo-1511689660979-10d2b1aada49?w=500',
-    ingredients: ['Tomato Sauce', 'Mozzarella', 'Bell Peppers', 'Mushrooms', 'Olives', 'Onions', 'Tomatoes'],
+    price: 329,
+    sizes: {
+      small: { price: 279, available: true },
+      medium: { price: 379, available: true },
+      large: { price: 479, available: true },
+      extra_large: { price: 579, available: true }
+    },
+    image: 'https://images.unsplash.com/photo-1511689660979-10d2b1aada49?w=400',
+    ingredients: ['Tomato Sauce', 'Mozzarella', 'Bell Peppers', 'Onions', 'Mushrooms', 'Olives'],
     isVegetarian: true,
     isSpicy: false,
-    tags: ['vegetarian', 'healthy']
+    inventory: 45,
+    rating: { average: 4.3, count: 90 },
+    tags: ['healthy', 'vegetarian']
   },
   {
-    name: 'Meat Lovers',
-    description: 'Pepperoni, sausage, bacon, ham, and ground beef',
+    name: 'Spicy Paneer',
+    description: 'Indian cottage cheese with spicy jalapeños and green chilies',
     category: 'pizza',
-    price: 449,
-    prices: { small: 349, medium: 449, large: 549, extra_large: 649 },
-    inventory: 30,
-    imageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500',
-    ingredients: ['Tomato Sauce', 'Mozzarella', 'Pepperoni', 'Sausage', 'Bacon', 'Ham', 'Ground Beef'],
-    isVegetarian: false,
-    isSpicy: false,
-    tags: ['meat', 'hearty', 'bestseller']
-  },
-  {
-    name: 'Spicy Jalapeño',
-    description: 'Hot and spicy with jalapeños, pepperoni, and crushed red pepper',
-    category: 'pizza',
-    price: 379,
-    prices: { small: 279, medium: 379, large: 479, extra_large: 579 },
-    inventory: 25,
-    imageUrl: 'https://images.unsplash.com/photo-1458642849426-cfb724f15ef7?w=500',
-    ingredients: ['Tomato Sauce', 'Mozzarella', 'Jalapeños', 'Pepperoni', 'Crushed Red Pepper'],
-    isVegetarian: false,
+    price: 369,
+    sizes: {
+      small: { price: 319, available: true },
+      medium: { price: 419, available: true },
+      large: { price: 519, available: true },
+      extra_large: { price: 619, available: true }
+    },
+    image: 'https://images.unsplash.com/photo-1593560708920-61dd98c46a4e?w=400',
+    ingredients: ['Tomato Sauce', 'Mozzarella', 'Paneer', 'Jalapeños', 'Green Chilies'],
+    isVegetarian: true,
     isSpicy: true,
-    tags: ['spicy', 'hot']
-  },
-  {
-    name: 'Hawaiian Pizza',
-    description: 'Ham and pineapple with mozzarella cheese',
-    category: 'pizza',
-    price: 349,
-    prices: { small: 249, medium: 349, large: 449, extra_large: 549 },
-    inventory: 40,
-    imageUrl: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=500',
-    ingredients: ['Tomato Sauce', 'Mozzarella', 'Ham', 'Pineapple'],
-    isVegetarian: false,
-    isSpicy: false,
-    tags: ['tropical', 'sweet']
-  },
-  {
-    name: 'Four Cheese Pizza',
-    description: 'Mozzarella, cheddar, parmesan, and gorgonzola cheese blend',
-    category: 'pizza',
-    price: 379,
-    prices: { small: 279, medium: 379, large: 479, extra_large: 579 },
-    inventory: 35,
-    imageUrl: 'https://images.unsplash.com/photo-1571407970349-bc81e7e96d47?w=500',
-    ingredients: ['Tomato Sauce', 'Mozzarella', 'Cheddar', 'Parmesan', 'Gorgonzola'],
-    isVegetarian: true,
-    isSpicy: false,
-    tags: ['cheese', 'vegetarian', 'premium']
+    inventory: 30,
+    rating: { average: 4.4, count: 85 },
+    tags: ['indian', 'spicy', 'vegetarian']
   },
 
   // Drinks
   {
-    name: 'Coca-Cola',
-    description: 'Classic Coca-Cola 500ml',
+    name: 'Coca Cola',
+    description: 'Classic refreshing cola drink',
     category: 'drink',
-    price: 49,
+    price: 60,
+    sizes: {
+      small: { price: 40, available: true },
+      medium: { price: 60, available: true },
+      large: { price: 80, available: true }
+    },
+    image: 'https://images.unsplash.com/photo-1554866585-cd94860890b7?w=400',
+    ingredients: ['Carbonated Water', 'Sugar', 'Natural Flavors'],
+    isVegetarian: true,
+    isSpicy: false,
     inventory: 100,
-    imageUrl: 'https://images.unsplash.com/photo-1554866585-cd94860890b7?w=500',
-    isVegetarian: true,
-    tags: ['soda', 'classic']
+    rating: { average: 4.2, count: 50 },
+    tags: ['cold', 'refreshing']
   },
   {
-    name: 'Pepsi',
-    description: 'Refreshing Pepsi 500ml',
+    name: 'Fresh Lemonade',
+    description: 'Freshly squeezed lemonade with mint',
     category: 'drink',
-    price: 49,
-    inventory: 100,
-    imageUrl: 'https://images.unsplash.com/photo-1629203851122-3726ecdf080e?w=500',
+    price: 79,
+    sizes: {
+      small: { price: 59, available: true },
+      medium: { price: 79, available: true },
+      large: { price: 99, available: true }
+    },
+    image: 'https://images.unsplash.com/photo-1621263764928-df1444c5e859?w=400',
+    ingredients: ['Lemon', 'Water', 'Sugar', 'Mint'],
     isVegetarian: true,
-    tags: ['soda']
-  },
-  {
-    name: 'Sprite',
-    description: 'Lemon-lime flavored Sprite 500ml',
-    category: 'drink',
-    price: 49,
-    inventory: 80,
-    imageUrl: 'https://images.unsplash.com/photo-1625772299848-391b6a87d7b3?w=500',
-    isVegetarian: true,
-    tags: ['soda', 'lemon']
-  },
-  {
-    name: 'Fanta Orange',
-    description: 'Orange flavored Fanta 500ml',
-    category: 'drink',
-    price: 49,
-    inventory: 75,
-    imageUrl: 'https://images.unsplash.com/photo-1624517452488-04869289c4ca?w=500',
-    isVegetarian: true,
-    tags: ['soda', 'orange']
-  },
-  {
-    name: 'Mineral Water',
-    description: 'Pure mineral water 500ml',
-    category: 'drink',
-    price: 29,
-    inventory: 150,
-    imageUrl: 'https://images.unsplash.com/photo-1548839140-29a749e1cf4d?w=500',
-    isVegetarian: true,
-    tags: ['water', 'healthy']
-  },
-  {
-    name: 'Iced Tea',
-    description: 'Refreshing lemon iced tea 500ml',
-    category: 'drink',
-    price: 59,
+    isSpicy: false,
     inventory: 60,
-    imageUrl: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=500',
-    isVegetarian: true,
-    tags: ['tea', 'refreshing']
+    rating: { average: 4.5, count: 75 },
+    tags: ['fresh', 'healthy']
   },
 
   // Breads
@@ -215,88 +190,143 @@ const products = [
     name: 'Garlic Bread',
     description: 'Crispy bread with garlic butter and herbs',
     category: 'bread',
-    price: 99,
-    inventory: 60,
-    imageUrl: 'https://images.unsplash.com/photo-1619535860434-ba1d8fa12536?w=500',
-    ingredients: ['Bread', 'Garlic', 'Butter', 'Herbs'],
-    isVegetarian: true,
-    tags: ['appetizer', 'bestseller']
-  },
-  {
-    name: 'Cheesy Garlic Bread',
-    description: 'Garlic bread topped with melted mozzarella cheese',
-    category: 'bread',
     price: 129,
-    inventory: 50,
-    imageUrl: 'https://images.unsplash.com/photo-1619535860434-ba1d8fa12536?w=500',
-    ingredients: ['Bread', 'Garlic', 'Butter', 'Mozzarella'],
+    sizes: {
+      small: { price: 99, available: true },
+      medium: { price: 149, available: true },
+      large: { price: 199, available: true }
+    },
+    image: 'https://images.unsplash.com/photo-1619535860434-ba1d8fa12536?w=400',
+    ingredients: ['Bread', 'Garlic Butter', 'Parsley', 'Oregano'],
     isVegetarian: true,
-    tags: ['appetizer', 'cheesy']
+    isSpicy: false,
+    inventory: 80,
+    rating: { average: 4.6, count: 110 },
+    tags: ['side', 'bestseller']
   },
   {
-    name: 'Breadsticks',
-    description: 'Soft breadsticks with marinara dipping sauce',
-    category: 'bread',
-    price: 79,
-    inventory: 70,
-    imageUrl: 'https://images.unsplash.com/photo-1509722747041-616f39b57569?w=500',
-    ingredients: ['Flour', 'Yeast', 'Butter', 'Herbs'],
-    isVegetarian: true,
-    tags: ['appetizer', 'snack']
-  },
-  {
-    name: 'Stuffed Crust Bread',
-    description: 'Bread stuffed with cheese and herbs, served with dipping sauce',
+    name: 'Cheesy Breadsticks',
+    description: 'Warm breadsticks stuffed with mozzarella cheese',
     category: 'bread',
     price: 149,
-    inventory: 40,
-    imageUrl: 'https://images.unsplash.com/photo-1586816001966-79b736744398?w=500',
-    ingredients: ['Bread', 'Mozzarella', 'Herbs', 'Marinara'],
+    sizes: {
+      small: { price: 119, available: true },
+      medium: { price: 169, available: true },
+      large: { price: 219, available: true }
+    },
+    image: 'https://images.unsplash.com/photo-1509722747041-616f39b57569?w=400',
+    ingredients: ['Bread', 'Mozzarella', 'Butter', 'Garlic'],
     isVegetarian: true,
-    tags: ['appetizer', 'stuffed', 'premium']
+    isSpicy: false,
+    inventory: 70,
+    rating: { average: 4.4, count: 95 },
+    tags: ['cheesy', 'side']
   },
   {
-    name: 'Focaccia Bread',
-    description: 'Italian flatbread with olive oil and rosemary',
+    name: 'Spicy Chicken Wings',
+    description: 'Crispy wings tossed in spicy buffalo sauce',
     category: 'bread',
-    price: 119,
-    inventory: 45,
-    imageUrl: 'https://images.unsplash.com/photo-1586816001966-79b736744398?w=500',
-    ingredients: ['Flour', 'Olive Oil', 'Rosemary', 'Sea Salt'],
-    isVegetarian: true,
-    tags: ['italian', 'appetizer']
+    price: 249,
+    sizes: {
+      small: { price: 199, available: true },
+      medium: { price: 299, available: true },
+      large: { price: 399, available: true }
+    },
+    image: 'https://images.unsplash.com/photo-1608039755401-742074f0548d?w=400',
+    ingredients: ['Chicken Wings', 'Buffalo Sauce', 'Butter'],
+    isVegetarian: false,
+    isSpicy: true,
+    inventory: 40,
+    rating: { average: 4.7, count: 130 },
+    tags: ['spicy', 'popular']
   }
 ];
 
+// Sample Coupons
+const coupons = [
+  {
+    code: 'WELCOME50',
+    type: 'percentage',
+    value: 50,
+    minOrderAmount: 300,
+    maxDiscount: 200,
+    usageLimit: 1000,
+    userUsageLimit: 1,
+    validFrom: new Date(),
+    validUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
+    description: '50% off for new users, max ₹200 discount'
+  },
+  {
+    code: 'FLAT100',
+    type: 'fixed',
+    value: 100,
+    minOrderAmount: 500,
+    usageLimit: 500,
+    userUsageLimit: 3,
+    validFrom: new Date(),
+    validUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+    description: '₹100 off on orders above ₹500'
+  },
+  {
+    code: 'PIZZA20',
+    type: 'percentage',
+    value: 20,
+    minOrderAmount: 400,
+    maxDiscount: 150,
+    usageLimit: null, // Unlimited
+    userUsageLimit: null, // Unlimited per user
+    validFrom: new Date(),
+    validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+    description: '20% off, max ₹150 - No usage limits!'
+  }
+];
+
+// Seed function
 const seedDatabase = async () => {
   try {
-    await connectDB();
+    // Connect to database
+    await mongoose.connect(process.env.MONGODB_URI);
+    console.log('Connected to MongoDB');
 
     // Clear existing data
+    console.log('Clearing existing data...');
     await User.deleteMany({});
     await Product.deleteMany({});
+    await Coupon.deleteMany({});
 
-    console.log('Existing data cleared');
-
-    // Create users
+    // Create users (password will be hashed by pre-save hook)
+    console.log('Creating users...');
     const createdUsers = await User.create(users);
-    console.log(`${createdUsers.length} users created`);
+    console.log(`Created ${createdUsers.length} users`);
 
     // Create products
+    console.log('Creating products...');
     const createdProducts = await Product.create(products);
-    console.log(`${createdProducts.length} products created`);
+    console.log(`Created ${createdProducts.length} products`);
 
-    console.log('\nSeed data created successfully!');
+    // Create coupons
+    console.log('Creating coupons...');
+    const createdCoupons = await Coupon.create(coupons);
+    console.log(`Created ${createdCoupons.length} coupons`);
+
+    console.log('\n========================================');
+    console.log('Database seeded successfully!');
+    console.log('========================================');
     console.log('\nTest Accounts:');
-    console.log('Admin: admin@crewplus.com / admin123');
-    console.log('Customer: john@example.com / customer123');
-    console.log('Customer: jane@example.com / customer123');
+    console.log('  Admin: admin@crewplus.com / admin123');
+    console.log('  User:  john@example.com / john123');
+    console.log('\nCoupon Codes:');
+    console.log('  WELCOME50 - 50% off (max ₹200)');
+    console.log('  FLAT100   - ₹100 off');
+    console.log('  PIZZA20   - 20% off (max ₹150)');
+    console.log('========================================\n');
 
     process.exit(0);
   } catch (error) {
-    console.error('Error seeding database:', error);
+    console.error('Seed error:', error);
     process.exit(1);
   }
 };
 
+// Run seeder
 seedDatabase();

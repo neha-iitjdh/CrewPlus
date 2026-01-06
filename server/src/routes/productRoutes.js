@@ -1,5 +1,18 @@
+/**
+ * Product Routes
+ *
+ * Route Organization:
+ * - Public routes first (no auth)
+ * - Protected routes after (with middleware)
+ * - Admin routes at the end
+ *
+ * Route Order Matters!
+ * Specific routes like /menu must come BEFORE /:id
+ * Otherwise /menu would be treated as an ID
+ */
 const express = require('express');
 const router = express.Router();
+const { protect, isAdmin } = require('../middleware/auth');
 const {
   getProducts,
   getMenu,
@@ -11,25 +24,44 @@ const {
   getAllProductsAdmin,
   getLowStockProducts
 } = require('../controllers/productController');
-const { protect, isAdmin } = require('../middleware/auth');
-const validate = require('../middleware/validate');
-const {
-  createProductValidator,
-  updateProductValidator,
-  updateInventoryValidator
-} = require('../validators/productValidator');
 
-// Public routes
-router.get('/', getProducts);
+// ===========================================
+// PUBLIC ROUTES
+// ===========================================
+
+// Get menu grouped by category
 router.get('/menu', getMenu);
-router.get('/:id', getProduct);
 
-// Admin routes
+// Get all products with filters
+router.get('/', getProducts);
+
+// ===========================================
+// ADMIN ROUTES (must be before /:id)
+// ===========================================
+
+// Admin: Get all products including unavailable
 router.get('/admin/all', protect, isAdmin, getAllProductsAdmin);
+
+// Admin: Get low stock alerts
 router.get('/admin/low-stock', protect, isAdmin, getLowStockProducts);
-router.post('/', protect, isAdmin, createProductValidator, validate, createProduct);
-router.put('/:id', protect, isAdmin, updateProductValidator, validate, updateProduct);
+
+// Admin: Create product
+router.post('/', protect, isAdmin, createProduct);
+
+// Admin: Update product
+router.put('/:id', protect, isAdmin, updateProduct);
+
+// Admin: Update inventory
+router.put('/:id/inventory', protect, isAdmin, updateInventory);
+
+// Admin: Delete product (soft delete)
 router.delete('/:id', protect, isAdmin, deleteProduct);
-router.put('/:id/inventory', protect, isAdmin, updateInventoryValidator, validate, updateInventory);
+
+// ===========================================
+// PUBLIC ROUTES (with params - must be last)
+// ===========================================
+
+// Get single product (must be after /admin/* routes)
+router.get('/:id', getProduct);
 
 module.exports = router;
