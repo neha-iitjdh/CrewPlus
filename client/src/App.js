@@ -1,142 +1,138 @@
-import { Routes, Route } from 'react-router-dom';
-import Navbar from './components/layout/Navbar';
-import Footer from './components/layout/Footer';
+/**
+ * App.js - Root Component
+ *
+ * This is where we:
+ * 1. Set up providers (Auth, Cart) that wrap the entire app
+ * 2. Configure routes with React Router
+ * 3. Add global components (Layout, Toaster)
+ *
+ * Component Tree:
+ * <AuthProvider>
+ *   <CartProvider>
+ *     <Router>
+ *       <Layout>
+ *         <Routes... />
+ *       </Layout>
+ *     </Router>
+ *   </CartProvider>
+ * </AuthProvider>
+ */
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
+
+// Context Providers
+import { AuthProvider } from './context/AuthContext';
+import { CartProvider } from './context/CartContext';
+
+// Layout & Common
+import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/common/ProtectedRoute';
 
-// Public Pages
+// Pages
 import Home from './pages/Home';
 import Menu from './pages/Menu';
 import Cart from './pages/Cart';
+import Login from './pages/Login';
+import Register from './pages/Register';
 import Checkout from './pages/Checkout';
-import TrackOrder from './pages/TrackOrder';
-import CreateGroupOrder from './pages/CreateGroupOrder';
-import GroupOrder from './pages/GroupOrder';
-
-// Auth Pages
-import Login from './pages/auth/Login';
-import Register from './pages/auth/Register';
-
-// Customer Pages
-import Orders from './pages/customer/Orders';
-import OrderDetails from './pages/customer/OrderDetails';
-import Profile from './pages/customer/Profile';
+import Orders from './pages/Orders';
+import OrderDetail from './pages/OrderDetail';
+import Profile from './pages/Profile';
 
 // Admin Pages
-import Dashboard from './pages/admin/Dashboard';
-import ManageOrders from './pages/admin/ManageOrders';
-import ManageProducts from './pages/admin/ManageProducts';
-import ManageUsers from './pages/admin/ManageUsers';
-import ManageCoupons from './pages/admin/ManageCoupons';
-import ManageCustomizations from './pages/admin/ManageCustomizations';
-import ManageInventory from './pages/admin/ManageInventory';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminOrders from './pages/admin/AdminOrders';
+import AdminProducts from './pages/admin/AdminProducts';
 
+// Global Styles
 import './App.css';
 
 function App() {
   return (
-    <div className="app">
-      <Navbar />
-      <main className="main-content">
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/" element={<Home />} />
-          <Route path="/menu" element={<Menu />} />
-          <Route path="/cart" element={<Cart />} />
-          <Route path="/checkout" element={<Checkout />} />
-          <Route path="/track" element={<TrackOrder />} />
-          <Route path="/group-order/create" element={<CreateGroupOrder />} />
-          <Route path="/group-order/:code" element={<GroupOrder />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-
-          {/* Customer Routes */}
-          <Route
-            path="/orders"
-            element={
-              <ProtectedRoute>
-                <Orders />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/orders/:id"
-            element={
-              <ProtectedRoute>
-                <OrderDetails />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute>
-                <Profile />
-              </ProtectedRoute>
-            }
+    <AuthProvider>
+      <CartProvider>
+        <Router>
+          {/* Toast notifications */}
+          <Toaster
+            position="top-right"
+            toastOptions={{
+              duration: 3000,
+              style: {
+                background: '#333',
+                color: '#fff',
+              },
+              success: {
+                iconTheme: {
+                  primary: '#4caf50',
+                  secondary: '#fff',
+                },
+              },
+              error: {
+                iconTheme: {
+                  primary: '#e63946',
+                  secondary: '#fff',
+                },
+              },
+            }}
           />
 
-          {/* Admin Routes */}
-          <Route
-            path="/admin"
-            element={
-              <ProtectedRoute requiredRole="admin">
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/orders"
-            element={
-              <ProtectedRoute requiredRole="admin">
-                <ManageOrders />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/products"
-            element={
-              <ProtectedRoute requiredRole="admin">
-                <ManageProducts />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/inventory"
-            element={
-              <ProtectedRoute requiredRole="admin">
-                <ManageInventory />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/users"
-            element={
-              <ProtectedRoute requiredRole="admin">
-                <ManageUsers />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/coupons"
-            element={
-              <ProtectedRoute requiredRole="admin">
-                <ManageCoupons />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/customizations"
-            element={
-              <ProtectedRoute requiredRole="admin">
-                <ManageCustomizations />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
-      </main>
-      <Footer />
-    </div>
+          {/* Main Layout with Navbar & Footer */}
+          <Layout>
+            <Routes>
+              {/* Public Routes */}
+              <Route path="/" element={<Home />} />
+              <Route path="/menu" element={<Menu />} />
+              <Route path="/cart" element={<Cart />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+
+              {/* Protected Routes - Require Login */}
+              <Route path="/checkout" element={
+                <ProtectedRoute><Checkout /></ProtectedRoute>
+              } />
+              <Route path="/orders" element={
+                <ProtectedRoute><Orders /></ProtectedRoute>
+              } />
+              <Route path="/orders/:id" element={
+                <ProtectedRoute><OrderDetail /></ProtectedRoute>
+              } />
+              <Route path="/profile" element={
+                <ProtectedRoute><Profile /></ProtectedRoute>
+              } />
+
+              {/* Admin Routes - Require Admin Role */}
+              <Route path="/admin" element={
+                <ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>
+              } />
+              <Route path="/admin/orders" element={
+                <ProtectedRoute adminOnly><AdminOrders /></ProtectedRoute>
+              } />
+              <Route path="/admin/products" element={
+                <ProtectedRoute adminOnly><AdminProducts /></ProtectedRoute>
+              } />
+
+              {/* 404 - Catch all */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Layout>
+        </Router>
+      </CartProvider>
+    </AuthProvider>
   );
 }
+
+/**
+ * Simple 404 Page
+ */
+const NotFound = () => (
+  <div style={{
+    textAlign: 'center',
+    padding: '80px 20px',
+    minHeight: 'calc(100vh - 200px)'
+  }}>
+    <h1 style={{ fontSize: '4rem', color: '#e63946' }}>404</h1>
+    <p style={{ fontSize: '1.2rem', color: '#666' }}>Page not found</p>
+  </div>
+);
 
 export default App;
