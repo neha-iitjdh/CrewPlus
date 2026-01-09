@@ -1,44 +1,45 @@
+/**
+ * API Service
+ *
+ * Axios instance configured to talk to our backend.
+ *
+ * Why centralize API calls?
+ * - Single place to configure base URL, headers, timeouts
+ * - Interceptors can handle auth tokens automatically
+ * - Consistent error handling across all requests
+ */
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || '/api';
-// const API_URL = process.env.REACT_APP_API_URL || 
-//   (process.env.NODE_ENV === 'production' 
-//     ? 'https://crewplus-api.onrender.com/api' 
-//     : 'http://localhost:5000/api');
-
-// Create axios instance
+// Create axios instance with default config
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
+  timeout: 10000, // 10 seconds
   headers: {
-    'Content-Type': 'application/json',
-  },
+    'Content-Type': 'application/json'
+  }
 });
 
-// Clean up old localStorage sessionId if it exists (migration from old behavior)
-if (localStorage.getItem('sessionId')) {
-  localStorage.removeItem('sessionId');
-}
-
-// Get or create session ID for guest users
-// Uses sessionStorage so cart resets on new browser session
-const getSessionId = () => {
-  let sessionId = sessionStorage.getItem('guestSessionId');
-  if (!sessionId) {
-    sessionId = 'session_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
-    sessionStorage.setItem('guestSessionId', sessionId);
-  }
-  return sessionId;
-};
-
-// Request interceptor
+/**
+ * Request Interceptor
+ *
+ * Runs BEFORE every request is sent.
+ * We use it to attach the auth token from localStorage.
+ */
 api.interceptors.request.use(
   (config) => {
+    // Get token from localStorage
     const token = localStorage.getItem('token');
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    // Add session ID for cart operations
-    config.headers['x-session-id'] = getSessionId();
+
+    // Get session ID for guest cart
+    const sessionId = localStorage.getItem('sessionId');
+    if (sessionId) {
+      config.headers['x-session-id'] = sessionId;
+    }
+
     return config;
   },
   (error) => {
@@ -46,123 +47,32 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor
+/**
+ * Response Interceptor
+ *
+ * Runs AFTER response is received.
+ * Handles common errors (401 = logout, etc.)
+ */
 api.interceptors.response.use(
-  (response) => response.data,
+  (response) => {
+    // Return the data directly for convenience
+    return response.data;
+  },
   (error) => {
-    const message = error.response?.data?.message || 'Something went wrong';
+    // Extract error message from response
+    const message = error.response?.data?.message || error.message || 'Something went wrong';
 
-    // Handle 401 errors
+    // Handle 401 Unauthorized - token expired or invalid
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      // Redirect to login if needed
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
-      }
+      // Optionally redirect to login
+      window.location.href = '/login';
     }
 
-    return Promise.reject({ message, errors: error.response?.data?.errors || [] });
+    // Reject with structured error
+    return Promise.reject({ message, status: error.response?.status });
   }
 );
 
-// Auth API
-export const authAPI = {
-  register: (data) => api.post('/auth/register', data),
-  login: (data) => api.post('/auth/login', data),
-  getMe: () => api.get('/auth/me'),
-  updateProfile: (data) => api.put('/auth/profile', data),
-  changePassword: (data) => api.put('/auth/password', data),
-  getAllUsers: (params) => api.get('/auth/users', { params }),
-  createUser: (data) => api.post('/auth/users', data),
-  updateUserRole: (id, role) => api.put(`/auth/users/${id}/role`, { role }),
-  toggleUserStatus: (id) => api.put(`/auth/users/${id}/status`),
-};
-
-// Products API
-export const productsAPI = {
-  getMenu: () => api.get('/products/menu'),
-  getProducts: (params) => api.get('/products', { params }),
-  getProduct: (id) => api.get(`/products/${id}`),
-  createProduct: (data) => api.post('/products', data),
-  updateProduct: (id, data) => api.put(`/products/${id}`, data),
-  deleteProduct: (id) => api.delete(`/products/${id}`),
-  updateInventory: (id, data) => api.put(`/products/${id}/inventory`, data),
-  getAllProductsAdmin: (params) => api.get('/products/admin/all', { params }),
-  getLowStockProducts: (threshold) => api.get('/products/admin/low-stock', { params: { threshold } }),
-};
-
-// Cart API
-export const cartAPI = {
-  getCart: () => api.get('/cart'),
-  addToCart: (data) => api.post('/cart/items', data),
-  updateCartItem: (itemId, quantity) => api.put(`/cart/items/${itemId}`, { quantity }),
-  removeFromCart: (itemId) => api.delete(`/cart/items/${itemId}`),
-  clearCart: () => api.delete('/cart'),
-  mergeCart: (sessionId) => api.post('/cart/merge', { sessionId }),
-};
-
-// Orders API
-export const ordersAPI = {
-  createOrder: (data) => api.post('/orders', data),
-  getMyOrders: (params) => api.get('/orders/my-orders', { params }),
-  getOrder: (id) => api.get(`/orders/${id}`),
-  cancelOrder: (id) => api.put(`/orders/${id}/cancel`),
-  trackOrder: (orderNumber) => api.get(`/orders/track/${orderNumber}`),
-  getAllOrders: (params) => api.get('/orders', { params }),
-  updateOrderStatus: (id, status) => api.put(`/orders/${id}/status`, { status }),
-  getAnalytics: (params) => api.get('/orders/admin/analytics', { params }),
-};
-
-// Coupons API
-export const couponsAPI = {
-  validateCoupon: (code, subtotal) => api.post('/coupons/validate', { code, subtotal }),
-  getAllCoupons: (params) => api.get('/coupons', { params }),
-  createCoupon: (data) => api.post('/coupons', data),
-  updateCoupon: (id, data) => api.put(`/coupons/${id}`, data),
-  deleteCoupon: (id) => api.delete(`/coupons/${id}`),
-  toggleCouponStatus: (id) => api.put(`/coupons/${id}/toggle`),
-};
-
-// Customizations API
-export const customizationsAPI = {
-  getCustomizations: (params) => api.get('/customizations', { params }),
-  getCustomization: (id) => api.get(`/customizations/${id}`),
-  createCustomization: (data) => api.post('/customizations', data),
-  updateCustomization: (id, data) => api.put(`/customizations/${id}`, data),
-  deleteCustomization: (id) => api.delete(`/customizations/${id}`),
-  toggleCustomization: (id) => api.put(`/customizations/${id}/toggle`),
-};
-
-// Recommendations API
-export const recommendationsAPI = {
-  getRecommendations: (limit = 6) => api.get('/recommendations', { params: { limit } }),
-  getPopular: (limit = 6) => api.get('/recommendations/popular', { params: { limit } }),
-  getTrending: (limit = 6) => api.get('/recommendations/trending', { params: { limit } }),
-  getSimilar: (productIds, limit = 4) => api.post('/recommendations/similar', { productIds }, { params: { limit } }),
-  getPreferences: () => api.get('/recommendations/preferences'),
-  updateDietaryPreferences: (data) => api.put('/recommendations/preferences/dietary', data),
-  getReorderSuggestions: () => api.get('/recommendations/reorder'),
-};
-
-// Group Orders API
-export const groupOrdersAPI = {
-  create: (data) => api.post('/group-orders', data),
-  getMyGroupOrders: () => api.get('/group-orders'),
-  getGroupOrder: (code) => api.get(`/group-orders/${code}`),
-  join: (code, data) => api.post(`/group-orders/${code}/join`, data),
-  leave: (code, data) => api.post(`/group-orders/${code}/leave`, data),
-  addItem: (code, data) => api.post(`/group-orders/${code}/items`, data),
-  updateItem: (code, itemId, data) => api.put(`/group-orders/${code}/items/${itemId}`, data),
-  removeItem: (code, itemId, data) => api.delete(`/group-orders/${code}/items/${itemId}`, { data }),
-  toggleReady: (code, data) => api.put(`/group-orders/${code}/ready`, data),
-  lock: (code) => api.put(`/group-orders/${code}/lock`),
-  unlock: (code) => api.put(`/group-orders/${code}/unlock`),
-  setSplitType: (code, splitType) => api.put(`/group-orders/${code}/split`, { splitType }),
-  getSplit: (code) => api.get(`/group-orders/${code}/split`),
-  checkout: (code, data) => api.post(`/group-orders/${code}/checkout`, data),
-  cancel: (code) => api.delete(`/group-orders/${code}`),
-};
-
-export { getSessionId };
 export default api;
