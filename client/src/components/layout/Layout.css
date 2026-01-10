@@ -1,0 +1,18 @@
+/**
+ * Layout Styles
+ *
+ * Flexbox column layout ensures footer stays at bottom
+ * min-height: 100vh makes layout fill viewport
+ * main-content flex-grow: 1 takes remaining space
+ */
+
+.layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.main-content {
+  flex: 1;
+  background: #f8f9fa;
+}

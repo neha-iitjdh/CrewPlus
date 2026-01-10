@@ -1,81 +1,69 @@
+/**
+ * Footer Component
+ *
+ * Site footer with links and info.
+ * Stays at bottom of page.
+ */
 import { Link } from 'react-router-dom';
-import { FiFacebook, FiInstagram, FiTwitter, FiPhone, FiMail, FiMapPin } from 'react-icons/fi';
-import { GiFullPizza } from 'react-icons/gi';
+import { FaPizzaSlice, FaPhone, FaEnvelope, FaMapMarkerAlt } from 'react-icons/fa';
 import './Footer.css';
 
 const Footer = () => {
   return (
     <footer className="footer">
       <div className="footer-container">
-        <div className="footer-grid">
+        {/* Brand Section */}
+        <div className="footer-section">
           <div className="footer-brand">
-            <Link to="/" className="footer-logo">
-              <GiFullPizza className="footer-logo-icon" />
-              <span>CrewPlus</span>
-            </Link>
-            <p className="footer-desc">
-              Crafting the perfect pizza experience since 2025. Fresh ingredients,
-              authentic recipes, and a passion for great food.
-            </p>
-            <div className="social-links">
-              <a href="#" className="social-link" aria-label="Facebook">
-                <FiFacebook />
-              </a>
-              <a href="#" className="social-link" aria-label="Instagram">
-                <FiInstagram />
-              </a>
-              <a href="#" className="social-link" aria-label="Twitter">
-                <FiTwitter />
-              </a>
-            </div>
+            <FaPizzaSlice className="footer-icon" />
+            <span>CrewPlus</span>
           </div>
-
-          <div className="footer-links">
-            <h4>Quick Links</h4>
-            <ul>
-              <li><Link to="/">Home</Link></li>
-              <li><Link to="/menu">Menu</Link></li>
-              <li><Link to="/cart">Cart</Link></li>
-              <li><Link to="/track">Track Order</Link></li>
-            </ul>
-          </div>
-
-          <div className="footer-links">
-            <h4>Categories</h4>
-            <ul>
-              <li><Link to="/menu?category=pizza">Pizzas</Link></li>
-              <li><Link to="/menu?category=drink">Drinks</Link></li>
-              <li><Link to="/menu?category=bread">Breads</Link></li>
-              <li><Link to="/menu?isVegetarian=true">Vegetarian</Link></li>
-            </ul>
-          </div>
-
-          <div className="footer-contact">
-            <h4>Contact Us</h4>
-            <ul>
-              <li>
-                <FiMapPin />
-                <span>IIT Jodhpur, N.H. 62, Nagaur Road, Karwar, Jodhpur, 342030</span>
-              </li>
-              <li>
-                <FiPhone />
-                <span>+1 9999999999</span>
-              </li>
-              <li>
-                <FiMail />
-                <span>contact@example.org</span>
-              </li>
-            </ul>
-          </div>
+          <p className="footer-tagline">
+            Delicious pizzas delivered hot and fresh to your doorstep.
+          </p>
         </div>
 
-        <div className="footer-bottom">
-          <p>&copy; {new Date().getFullYear()} CrewPlus Pizza. All rights reserved.</p>
-          <div className="footer-bottom-links">
-            <Link to="/privacy">Privacy Policy</Link>
-            <Link to="/terms">Terms of Service</Link>
-          </div>
+        {/* Quick Links */}
+        <div className="footer-section">
+          <h4>Quick Links</h4>
+          <ul>
+            <li><Link to="/menu">Menu</Link></li>
+            <li><Link to="/cart">Cart</Link></li>
+            <li><Link to="/orders">My Orders</Link></li>
+            <li><Link to="/profile">Profile</Link></li>
+          </ul>
         </div>
+
+        {/* Contact Info */}
+        <div className="footer-section">
+          <h4>Contact Us</h4>
+          <ul className="contact-list">
+            <li>
+              <FaPhone />
+              <span>+91 99999 99999</span>
+            </li>
+            <li>
+              <FaEnvelope />
+              <span>order@crewplus.com</span>
+            </li>
+            <li>
+              <FaMapMarkerAlt />
+              <span>Jodhpur, Rajasthan</span>
+            </li>
+          </ul>
+        </div>
+
+        {/* Hours */}
+        <div className="footer-section">
+          <h4>Hours</h4>
+          <p>Monday - Sunday</p>
+          <p className="hours">11:00 AM - 11:00 PM</p>
+        </div>
+      </div>
+
+      {/* Copyright */}
+      <div className="footer-bottom">
+        <p>&copy; {new Date().getFullYear()} CrewPlus. All rights reserved.</p>
       </div>
     </footer>
   );

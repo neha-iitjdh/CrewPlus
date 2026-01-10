@@ -1,172 +1,109 @@
+/**
+ * Footer Styles
+ */
+
 .footer {
-  background: linear-gradient(135deg, var(--dark) 0%, var(--dark-light) 100%);
-  color: var(--gray-300);
-  padding-top: var(--spacing-2xl);
+  background: #1a1a2e;
+  color: #fff;
+  margin-top: auto;
 }
 
 .footer-container {
-  max-width: 1280px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 0 var(--spacing-lg);
-}
-
-.footer-grid {
+  padding: 50px 20px;
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1.5fr;
-  gap: var(--spacing-2xl);
-  padding-bottom: var(--spacing-2xl);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 40px;
 }
 
-.footer-logo {
+/* Brand */
+.footer-brand {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: 10px;
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--white);
-  font-family: var(--font-display);
-  margin-bottom: var(--spacing-md);
+  color: #e63946;
+  margin-bottom: 15px;
 }
 
-.footer-logo-icon {
-  font-size: 2rem;
-  color: var(--primary);
+.footer-icon {
+  font-size: 1.8rem;
 }
 
-.footer-desc {
-  font-size: 0.95rem;
-  line-height: 1.7;
-  margin-bottom: var(--spacing-lg);
+.footer-tagline {
+  color: #aaa;
+  line-height: 1.6;
 }
 
-.social-links {
-  display: flex;
-  gap: var(--spacing-md);
+/* Sections */
+.footer-section h4 {
+  font-size: 1.1rem;
+  margin-bottom: 20px;
+  color: #fff;
 }
 
-.social-link {
-  width: 40px;
-  height: 40px;
+.footer-section ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.footer-section ul li {
+  margin-bottom: 10px;
+}
+
+.footer-section ul a {
+  color: #aaa;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.footer-section ul a:hover {
+  color: #e63946;
+}
+
+/* Contact List */
+.contact-list li {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-full);
-  font-size: 1.1rem;
-  color: var(--gray-300);
-  transition: all var(--transition-fast);
+  gap: 10px;
+  color: #aaa;
 }
 
-.social-link:hover {
-  background: var(--primary);
-  color: var(--white);
-  transform: translateY(-3px);
+.contact-list svg {
+  color: #e63946;
 }
 
-.footer-links h4,
-.footer-contact h4 {
-  color: var(--white);
-  font-size: 1.1rem;
+/* Hours */
+.footer-section p {
+  color: #aaa;
+  margin: 5px 0;
+}
+
+.hours {
+  color: #e63946;
   font-weight: 600;
-  margin-bottom: var(--spacing-lg);
-  position: relative;
 }
 
-.footer-links h4::after,
-.footer-contact h4::after {
-  content: '';
-  position: absolute;
-  bottom: -8px;
-  left: 0;
-  width: 30px;
-  height: 2px;
-  background: var(--primary);
-}
-
-.footer-links ul,
-.footer-contact ul {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-}
-
-.footer-links li a {
-  color: var(--gray-400);
-  transition: all var(--transition-fast);
-  display: inline-block;
-}
-
-.footer-links li a:hover {
-  color: var(--primary);
-  transform: translateX(5px);
-}
-
-.footer-contact li {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--spacing-sm);
-  color: var(--gray-400);
-}
-
-.footer-contact li svg {
-  margin-top: 4px;
-  color: var(--primary);
-  flex-shrink: 0;
-}
-
+/* Copyright */
 .footer-bottom {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--spacing-lg) 0;
+  border-top: 1px solid #333;
+  padding: 20px;
+  text-align: center;
+}
+
+.footer-bottom p {
+  color: #666;
+  margin: 0;
   font-size: 0.9rem;
 }
 
-.footer-bottom-links {
-  display: flex;
-  gap: var(--spacing-lg);
-}
-
-.footer-bottom-links a {
-  color: var(--gray-400);
-  transition: color var(--transition-fast);
-}
-
-.footer-bottom-links a:hover {
-  color: var(--primary);
-}
-
-/* Responsive */
-@media (max-width: 1024px) {
-  .footer-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
+/* Mobile */
 @media (max-width: 768px) {
-  .footer-grid {
-    grid-template-columns: 1fr;
-    text-align: center;
-  }
-
-  .footer-links h4::after,
-  .footer-contact h4::after {
-    left: 50%;
-    transform: translateX(-50%);
-  }
-
-  .social-links {
-    justify-content: center;
-  }
-
-  .footer-contact li {
-    justify-content: center;
-  }
-
-  .footer-bottom {
-    flex-direction: column;
-    gap: var(--spacing-md);
-    text-align: center;
+  .footer-container {
+    padding: 30px 20px;
+    gap: 30px;
   }
 }

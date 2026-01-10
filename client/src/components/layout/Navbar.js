@@ -1,175 +1,79 @@
-import { useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+/**
+ * Navbar Component
+ *
+ * Top navigation bar present on all pages.
+ *
+ * Features:
+ * - Logo/brand link to home
+ * - Navigation links (Menu, Cart)
+ * - Auth buttons (Login/Register or User menu)
+ * - Cart icon with item count badge
+ */
+import { Link, useNavigate } from 'react-router-dom';
+import { FaShoppingCart, FaUser, FaSignOutAlt, FaPizzaSlice } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
-import { FiShoppingCart, FiUser, FiMenu, FiX, FiLogOut, FiSettings, FiPackage, FiUsers, FiTag, FiSliders } from 'react-icons/fi';
-import { GiFullPizza } from 'react-icons/gi';
 import './Navbar.css';
 
 const Navbar = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const { user, isAuthenticated, logout, isAdmin } = useAuth();
+  const { user, isAuthenticated, isAdmin, logout } = useAuth();
   const { itemCount } = useCart();
   const navigate = useNavigate();
-  const location = useLocation();
 
   const handleLogout = () => {
     logout();
     navigate('/');
-    setShowDropdown(false);
   };
-
-  const isActive = (path) => location.pathname === path;
 
   return (
     <nav className="navbar">
       <div className="navbar-container">
+        {/* Logo */}
         <Link to="/" className="navbar-brand">
-          <GiFullPizza className="brand-icon" />
-          <span className="brand-text">CrewPlus</span>
+          <FaPizzaSlice className="brand-icon" />
+          <span>CrewPlus</span>
         </Link>
 
-        <div className={`navbar-menu ${isOpen ? 'active' : ''}`}>
-          <Link
-            to="/"
-            className={`nav-link ${isActive('/') ? 'active' : ''}`}
-            onClick={() => setIsOpen(false)}
-          >
-            Home
-          </Link>
-          <Link
-            to="/menu"
-            className={`nav-link ${isActive('/menu') ? 'active' : ''}`}
-            onClick={() => setIsOpen(false)}
-          >
-            Menu
-          </Link>
-          <Link
-            to="/group-order/create"
-            className={`nav-link ${location.pathname.startsWith('/group-order') ? 'active' : ''}`}
-            onClick={() => setIsOpen(false)}
-          >
-            Group Order
-          </Link>
-          {isAuthenticated && !isAdmin() && (
-            <Link
-              to="/orders"
-              className={`nav-link ${isActive('/orders') ? 'active' : ''}`}
-              onClick={() => setIsOpen(false)}
-            >
-              My Orders
-            </Link>
-          )}
-          {isAdmin() && (
-            <Link
-              to="/admin"
-              className={`nav-link ${isActive('/admin') ? 'active' : ''}`}
-              onClick={() => setIsOpen(false)}
-            >
-              Dashboard
-            </Link>
-          )}
-        </div>
+        {/* Navigation Links */}
+        <div className="navbar-links">
+          <Link to="/menu" className="nav-link">Menu</Link>
 
-        <div className="navbar-actions">
-          {!isAdmin() && (
-            <Link to="/cart" className="cart-btn">
-              <FiShoppingCart />
-              {itemCount > 0 && <span className="cart-badge">{itemCount}</span>}
-            </Link>
-          )}
+          {/* Cart with badge */}
+          <Link to="/cart" className="nav-link cart-link">
+            <FaShoppingCart />
+            {itemCount > 0 && (
+              <span className="cart-badge">{itemCount}</span>
+            )}
+          </Link>
 
+          {/* Auth Section */}
           {isAuthenticated ? (
             <div className="user-menu">
-              <button
-                className="user-btn"
-                onClick={() => setShowDropdown(!showDropdown)}
-              >
-                <FiUser />
-                <span className="user-name">{user?.name?.split(' ')[0]}</span>
-              </button>
+              <Link to="/orders" className="nav-link">My Orders</Link>
 
-              {showDropdown && (
-                <div className="dropdown-menu">
-                  <div className="dropdown-header">
-                    <span className="dropdown-name">{user?.name}</span>
-                    <span className="dropdown-role">{user?.role}</span>
-                  </div>
-                  <div className="dropdown-divider"></div>
-                  {isAdmin() ? (
-                    <>
-                      <Link
-                        to="/admin"
-                        className="dropdown-item"
-                        onClick={() => setShowDropdown(false)}
-                      >
-                        <FiSettings /> Dashboard
-                      </Link>
-                      <Link
-                        to="/admin/orders"
-                        className="dropdown-item"
-                        onClick={() => setShowDropdown(false)}
-                      >
-                        <FiPackage /> Manage Orders
-                      </Link>
-                      <Link
-                        to="/admin/users"
-                        className="dropdown-item"
-                        onClick={() => setShowDropdown(false)}
-                      >
-                        <FiUsers /> Manage Users
-                      </Link>
-                      <Link
-                        to="/admin/coupons"
-                        className="dropdown-item"
-                        onClick={() => setShowDropdown(false)}
-                      >
-                        <FiTag /> Manage Coupons
-                      </Link>
-                      <Link
-                        to="/admin/customizations"
-                        className="dropdown-item"
-                        onClick={() => setShowDropdown(false)}
-                      >
-                        <FiSliders /> Customizations
-                      </Link>
-                    </>
-                  ) : (
-                    <>
-                      <Link
-                        to="/profile"
-                        className="dropdown-item"
-                        onClick={() => setShowDropdown(false)}
-                      >
-                        <FiUser /> Profile
-                      </Link>
-                      <Link
-                        to="/orders"
-                        className="dropdown-item"
-                        onClick={() => setShowDropdown(false)}
-                      >
-                        <FiPackage /> My Orders
-                      </Link>
-                    </>
-                  )}
-                  <div className="dropdown-divider"></div>
-                  <button className="dropdown-item logout" onClick={handleLogout}>
-                    <FiLogOut /> Logout
+              {isAdmin && (
+                <Link to="/admin" className="nav-link admin-link">Admin</Link>
+              )}
+
+              <div className="user-dropdown">
+                <button className="user-btn">
+                  <FaUser />
+                  <span>{user?.name?.split(' ')[0]}</span>
+                </button>
+                <div className="dropdown-content">
+                  <Link to="/profile">Profile</Link>
+                  <button onClick={handleLogout}>
+                    <FaSignOutAlt /> Logout
                   </button>
                 </div>
-              )}
+              </div>
             </div>
           ) : (
-            <div className="auth-btns">
-              <Link to="/login" className="btn btn-outline btn-sm">Login</Link>
-              <Link to="/register" className="btn btn-primary btn-sm">Sign Up</Link>
+            <div className="auth-buttons">
+              <Link to="/login" className="nav-link">Login</Link>
+              <Link to="/register" className="btn btn-primary">Sign Up</Link>
             </div>
           )}
-
-          <button className="menu-toggle" onClick={() => setIsOpen(!isOpen)}>
-            {isOpen ? <FiX /> : <FiMenu />}
-          </button>
         </div>
       </div>
     </nav>
