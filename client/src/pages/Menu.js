@@ -1,184 +1,121 @@
+/**
+ * Menu Page
+ *
+ * Displays all products with filtering by category.
+ *
+ * Features:
+ * - Category tabs (All, Pizza, Drinks, Breads)
+ * - Product grid
+ * - Add to cart functionality
+ */
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { productsAPI } from '../services/api';
-import ProductCard from '../components/menu/ProductCard';
-import Loading from '../components/common/Loading';
-import { FiSearch, FiFilter } from 'react-icons/fi';
-import { GiFullPizza, GiSodaCan, GiHotMeal } from 'react-icons/gi';
-import { TbLeaf } from 'react-icons/tb';
+import api from '../services/api';
+import { useCart } from '../context/CartContext';
+import ProductCard from '../components/products/ProductCard';
+import toast from 'react-hot-toast';
 import './Menu.css';
 
 const Menu = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [activeCategory, setActiveCategory] = useState(searchParams.get('category') || 'all');
-  const [filters, setFilters] = useState({
-    isVegetarian: searchParams.get('isVegetarian') === 'true',
-    isSpicy: false,
-    inStock: true
-  });
+  const [addingId, setAddingId] = useState(null);
+  const [activeCategory, setActiveCategory] = useState('all');
 
+  const { addToCart } = useCart();
+
+  // Categories for filter tabs
   const categories = [
-    { id: 'all', name: 'All', icon: null },
-    { id: 'pizza', name: 'Pizzas', icon: <GiFullPizza /> },
-    { id: 'drink', name: 'Drinks', icon: <GiSodaCan /> },
-    { id: 'bread', name: 'Breads', icon: <GiHotMeal /> }
+    { id: 'all', name: 'All' },
+    { id: 'pizza', name: 'Pizzas' },
+    { id: 'drink', name: 'Drinks' },
+    { id: 'bread', name: 'Breads' }
   ];
 
+  // Fetch products on mount
   useEffect(() => {
-    const fetchProducts = async () => {
-      setLoading(true);
-      try {
-        const params = {};
-        if (activeCategory !== 'all') params.category = activeCategory;
-        if (searchTerm) params.search = searchTerm;
-        if (filters.isVegetarian) params.isVegetarian = true;
-        if (filters.inStock) params.inStock = true;
-
-        const response = await productsAPI.getProducts(params);
-        let filtered = response.data.products;
-
-        if (filters.isSpicy) {
-          filtered = filtered.filter(p => p.isSpicy);
-        }
-
-        setProducts(filtered);
-      } catch (error) {
-        console.error('Error fetching products:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchProducts();
-  }, [activeCategory, searchTerm, filters]);
+  }, []);
 
-  const handleCategoryChange = (categoryId) => {
-    setActiveCategory(categoryId);
-    if (categoryId === 'all') {
-      searchParams.delete('category');
-    } else {
-      searchParams.set('category', categoryId);
+  const fetchProducts = async () => {
+    try {
+      setLoading(true);
+      // Use /products endpoint which returns flat array
+      const response = await api.get('/products');
+      // API returns { success, data: { products, pagination } }
+      setProducts(response.data?.products || []);
+    } catch (error) {
+      toast.error('Failed to load products');
+      setProducts([]);
+    } finally {
+      setLoading(false);
     }
-    setSearchParams(searchParams);
   };
 
-  const handleFilterChange = (filterName) => {
-    setFilters(prev => ({
-      ...prev,
-      [filterName]: !prev[filterName]
-    }));
+  // Filter products by category
+  const filteredProducts = activeCategory === 'all'
+    ? products
+    : products.filter(p => p.category === activeCategory);
+
+  // Handle add to cart
+  const handleAddToCart = async (productId, quantity, size) => {
+    try {
+      setAddingId(productId);
+      await addToCart(productId, quantity, size);
+      toast.success('Added to cart!');
+    } catch (error) {
+      toast.error(error.message || 'Failed to add to cart');
+    } finally {
+      setAddingId(null);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="menu-page">
+        <div className="loading">Loading menu...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="menu-page">
-      <div className="menu-header">
-        <div className="container">
-          <h1 className="menu-title">Our Menu</h1>
-          <p className="menu-subtitle">
-            Explore our delicious selection of pizzas, drinks, and sides
-          </p>
+      <div className="menu-container">
+        {/* Header */}
+        <div className="menu-header">
+          <h1>Our Menu</h1>
+          <p>Fresh ingredients, amazing taste</p>
         </div>
-      </div>
 
-      <div className="menu-container container">
-        {/* Filters Sidebar */}
-        <aside className="menu-sidebar">
-          {/* Search */}
-          <div className="search-box">
-            <FiSearch className="search-icon" />
-            <input
-              type="text"
-              placeholder="Search menu..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-
-          {/* Categories */}
-          <div className="filter-section">
-            <h3>Categories</h3>
-            <div className="category-filters">
-              {categories.map(cat => (
-                <button
-                  key={cat.id}
-                  className={`category-filter-btn ${activeCategory === cat.id ? 'active' : ''}`}
-                  onClick={() => handleCategoryChange(cat.id)}
-                >
-                  {cat.icon && <span className="cat-icon">{cat.icon}</span>}
-                  {cat.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Dietary Filters */}
-          <div className="filter-section">
-            <h3>
-              <FiFilter /> Filters
-            </h3>
-            <div className="filter-options">
-              <label className="filter-checkbox">
-                <input
-                  type="checkbox"
-                  checked={filters.isVegetarian}
-                  onChange={() => handleFilterChange('isVegetarian')}
-                />
-                <span className="checkmark"></span>
-                <TbLeaf className="filter-icon veg" />
-                Vegetarian Only
-              </label>
-              <label className="filter-checkbox">
-                <input
-                  type="checkbox"
-                  checked={filters.isSpicy}
-                  onChange={() => handleFilterChange('isSpicy')}
-                />
-                <span className="checkmark"></span>
-                <span className="filter-icon spicy">🌶️</span>
-                Spicy Items
-              </label>
-              <label className="filter-checkbox">
-                <input
-                  type="checkbox"
-                  checked={filters.inStock}
-                  onChange={() => handleFilterChange('inStock')}
-                />
-                <span className="checkmark"></span>
-                In Stock Only
-              </label>
-            </div>
-          </div>
-        </aside>
+        {/* Category Tabs */}
+        <div className="category-tabs">
+          {categories.map((cat) => (
+            <button
+              key={cat.id}
+              className={`category-tab ${activeCategory === cat.id ? 'active' : ''}`}
+              onClick={() => setActiveCategory(cat.id)}
+            >
+              {cat.name}
+            </button>
+          ))}
+        </div>
 
         {/* Products Grid */}
-        <main className="menu-content">
-          {loading ? (
-            <Loading />
-          ) : products.length === 0 ? (
+        <div className="products-grid">
+          {filteredProducts.length === 0 ? (
             <div className="no-products">
-              <img
-                src="https://illustrations.popsy.co/gray/crashed-error.svg"
-                alt="No products"
-              />
-              <h3>No products found</h3>
-              <p>Try adjusting your filters or search term</p>
+              No products found in this category.
             </div>
           ) : (
-            <>
-              <div className="menu-info">
-                <span className="product-count">{products.length} items found</span>
-              </div>
-              <div className="products-grid grid grid-3">
-                {products.map(product => (
-                  <ProductCard key={product._id} product={product} />
-                ))}
-              </div>
-            </>
+            filteredProducts.map((product) => (
+              <ProductCard
+                key={product._id}
+                product={product}
+                onAddToCart={handleAddToCart}
+                loading={addingId === product._id}
+              />
+            ))
           )}
-        </main>
+        </div>
       </div>
     </div>
   );
