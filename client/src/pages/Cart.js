@@ -1,45 +1,81 @@
+/**
+ * Cart Page
+ *
+ * Shows cart items with:
+ * - Item list with quantity controls
+ * - Order summary
+ * - Coupon input
+ * - Checkout button
+ */
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { FaTrash, FaMinus, FaPlus, FaShoppingBag } from 'react-icons/fa';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-import Loading from '../components/common/Loading';
-import { FiPlus, FiMinus, FiTrash2, FiShoppingBag, FiArrowRight } from 'react-icons/fi';
+import toast from 'react-hot-toast';
 import './Cart.css';
 
 const Cart = () => {
   const { cart, loading, updateQuantity, removeFromCart, clearCart } = useCart();
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const [updatingItems, setUpdatingItems] = useState({});
 
+  const [updatingId, setUpdatingId] = useState(null);
+
+  // Handle quantity change
   const handleQuantityChange = async (itemId, newQuantity) => {
-    setUpdatingItems(prev => ({ ...prev, [itemId]: true }));
-    await updateQuantity(itemId, newQuantity);
-    setUpdatingItems(prev => ({ ...prev, [itemId]: false }));
+    if (newQuantity < 1) return;
+
+    try {
+      setUpdatingId(itemId);
+      await updateQuantity(itemId, newQuantity);
+    } catch (error) {
+      toast.error('Failed to update quantity');
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
+  // Handle remove item
   const handleRemove = async (itemId) => {
-    setUpdatingItems(prev => ({ ...prev, [itemId]: true }));
-    await removeFromCart(itemId);
-    setUpdatingItems(prev => ({ ...prev, [itemId]: false }));
+    try {
+      setUpdatingId(itemId);
+      await removeFromCart(itemId);
+      toast.success('Item removed');
+    } catch (error) {
+      toast.error('Failed to remove item');
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
+  // Handle checkout
   const handleCheckout = () => {
+    if (!isAuthenticated) {
+      toast('Please login to checkout', { icon: '👤' });
+      navigate('/login', { state: { from: { pathname: '/checkout' } } });
+      return;
+    }
     navigate('/checkout');
   };
 
-  if (loading && !cart) {
-    return <Loading fullPage />;
+  if (loading) {
+    return (
+      <div className="cart-page">
+        <div className="loading">Loading cart...</div>
+      </div>
+    );
   }
 
-  if (!cart || cart.items.length === 0) {
+  // Empty cart - use optional chaining to safely check items
+  if (!cart || !cart.items || cart.items.length === 0) {
     return (
-      <div className="cart-page empty-cart">
-        <div className="empty-cart-content">
-          <FiShoppingBag className="empty-icon" />
+      <div className="cart-page">
+        <div className="empty-cart">
+          <FaShoppingBag className="empty-icon" />
           <h2>Your cart is empty</h2>
-          <p>Looks like you haven't added any items to your cart yet.</p>
-          <Link to="/menu" className="btn btn-primary btn-lg">
+          <p>Looks like you haven't added anything yet.</p>
+          <Link to="/menu" className="btn btn-primary">
             Browse Menu
           </Link>
         </div>
@@ -49,122 +85,87 @@ const Cart = () => {
 
   return (
     <div className="cart-page">
-      <div className="container">
-        <div className="cart-header">
-          <h1>Shopping Cart</h1>
-          <button className="clear-cart-btn" onClick={clearCart}>
-            <FiTrash2 /> Clear Cart
-          </button>
-        </div>
+      <div className="cart-container">
+        <h1>Your Cart</h1>
 
         <div className="cart-layout">
+          {/* Cart Items */}
           <div className="cart-items">
             {cart.items.map((item) => (
               <div key={item._id} className="cart-item">
-                <div className="item-image">
-                  <img
-                    src={item.product?.imageUrl || 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=200'}
-                    alt={item.product?.name}
-                    onError={(e) => {
-                      e.target.src = 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=200';
-                    }}
-                  />
-                </div>
+                <img
+                  src={item.product.image}
+                  alt={item.product.name}
+                  className="item-image"
+                />
 
                 <div className="item-details">
-                  <h3 className="item-name">{item.product?.name}</h3>
-                  {item.size && (
-                    <span className="item-size">
-                      Size: {item.size.charAt(0).toUpperCase() + item.size.slice(1).replace('_', ' ')}
-                    </span>
-                  )}
-                  {item.customizations && item.customizations.length > 0 && (
-                    <div className="item-customizations">
-                      {item.customizations.map((cust, idx) => (
-                        <span key={idx} className="customization-tag">
-                          + {cust.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {item.notes && (
-                    <span className="item-notes">Note: {item.notes}</span>
-                  )}
+                  <h3>{item.product.name}</h3>
+                  <p className="item-size">Size: {item.size}</p>
+                  <p className="item-price">₹{item.price}</p>
                 </div>
 
-                <div className="item-price">
-                  ₹{item.price + (item.customizationTotal || 0)}
-                </div>
+                <div className="item-actions">
+                  {/* Quantity Controls */}
+                  <div className="quantity-controls">
+                    <button
+                      onClick={() => handleQuantityChange(item._id, item.quantity - 1)}
+                      disabled={updatingId === item._id || item.quantity <= 1}
+                    >
+                      <FaMinus />
+                    </button>
+                    <span>{item.quantity}</span>
+                    <button
+                      onClick={() => handleQuantityChange(item._id, item.quantity + 1)}
+                      disabled={updatingId === item._id}
+                    >
+                      <FaPlus />
+                    </button>
+                  </div>
 
-                <div className="item-quantity">
+                  {/* Subtotal */}
+                  <div className="item-subtotal">
+                    ₹{item.price * item.quantity}
+                  </div>
+
+                  {/* Remove Button */}
                   <button
-                    onClick={() => handleQuantityChange(item._id, item.quantity - 1)}
-                    disabled={updatingItems[item._id] || item.quantity <= 1}
+                    className="remove-btn"
+                    onClick={() => handleRemove(item._id)}
+                    disabled={updatingId === item._id}
                   >
-                    <FiMinus />
-                  </button>
-                  <span>{item.quantity}</span>
-                  <button
-                    onClick={() => handleQuantityChange(item._id, item.quantity + 1)}
-                    disabled={updatingItems[item._id]}
-                  >
-                    <FiPlus />
+                    <FaTrash />
                   </button>
                 </div>
-
-                <div className="item-total">
-                  ₹{(item.price + (item.customizationTotal || 0)) * item.quantity}
-                </div>
-
-                <button
-                  className="remove-btn"
-                  onClick={() => handleRemove(item._id)}
-                  disabled={updatingItems[item._id]}
-                >
-                  <FiTrash2 />
-                </button>
               </div>
             ))}
           </div>
 
-          <div className="cart-summary">
-            <h3>Order Summary</h3>
+          {/* Order Summary */}
+          <div className="order-summary">
+            <h2>Order Summary</h2>
 
             <div className="summary-row">
-              <span>Subtotal ({cart.items.reduce((acc, item) => acc + item.quantity, 0)} items)</span>
-              <span>₹{cart.subtotal?.toFixed(2)}</span>
+              <span>Subtotal</span>
+              <span>₹{cart.subtotal}</span>
             </div>
 
             <div className="summary-row">
-              <span>Tax (10%)</span>
-              <span>₹{cart.tax?.toFixed(2)}</span>
+              <span>Delivery</span>
+              <span>{cart.subtotal >= 500 ? 'FREE' : '₹50'}</span>
             </div>
-
-            <div className="summary-row">
-              <span>Delivery Fee</span>
-              <span className="free">Calculated at checkout</span>
-            </div>
-
-            <div className="summary-divider"></div>
 
             <div className="summary-row total">
               <span>Total</span>
-              <span>₹{cart.total?.toFixed(2)}</span>
+              <span>₹{cart.total}</span>
             </div>
 
             <button
-              className="checkout-btn btn btn-primary btn-lg"
+              className="btn btn-primary btn-block checkout-btn"
               onClick={handleCheckout}
             >
               Proceed to Checkout
-              <FiArrowRight />
             </button>
-
-            {!isAuthenticated && (
-              <p className="login-note">
-                <Link to="/login">Login</Link> to save your cart and view order history
-              </p>
-            )}
 
             <Link to="/menu" className="continue-shopping">
               Continue Shopping
