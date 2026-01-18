@@ -1,0 +1,87 @@
+# ================================
+# CrewPlus Docker Compose - Development
+# ================================
+# Run: docker-compose -f docker-compose.dev.yml up
+#
+# This version:
+# - Mounts source code for hot-reload
+# - Uses development mode
+# - Exposes all ports for debugging
+
+version: '3.8'
+
+services:
+  # ================================
+  # MongoDB Database
+  # ================================
+  mongodb:
+    image: mongo:7
+    container_name: crewplus-mongodb-dev
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: crewplus
+    volumes:
+      - mongodb_data_dev:/data/db
+    networks:
+      - crewplus-network-dev
+
+  # ================================
+  # Backend API (Express) - Development
+  # ================================
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.dev
+    container_name: crewplus-backend-dev
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      MONGODB_URI: mongodb://admin:password123@mongodb:27017/crewplus?authSource=admin
+      JWT_SECRET: dev-secret-key
+      JWT_EXPIRE: 7d
+      CLIENT_URL: http://localhost:3000
+    volumes:
+      # Mount source code for hot-reload
+      - ./server/src:/app/src:ro
+    depends_on:
+      - mongodb
+    networks:
+      - crewplus-network-dev
+
+  # ================================
+  # Frontend (React) - Development
+  # ================================
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile.dev
+    container_name: crewplus-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost:5000/api
+      CHOKIDAR_USEPOLLING: "true"  # For Windows file watching
+    volumes:
+      # Mount source code for hot-reload
+      - ./client/src:/app/src:ro
+      - ./client/public:/app/public:ro
+    depends_on:
+      - backend
+    networks:
+      - crewplus-network-dev
+
+networks:
+  crewplus-network-dev:
+    driver: bridge
+
+volumes:
+  mongodb_data_dev:
+    driver: local
